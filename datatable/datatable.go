@@ -1,0 +1,285 @@
+package datatable
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"strconv"
+	"strings"
+
+	"github.com/jkevinp/tgui/questionaire"
+
+	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+)
+
+type OnErrorHandler func(err error)
+
+type DataTable struct {
+	data                 []string
+	prefix               string
+	onError              OnErrorHandler
+	conversationSessions map[int64]*questionaire.Questionaire
+
+	callbackHandlerID string
+	dataHandler       dataHandlerFunc
+
+	CtrlBack   Button
+	CtrlNext   Button
+	CtrlClose  Button
+	CtrlFilter Button
+
+	filterKeys    []string
+	filterMenu    Filter
+	currentFilter map[string][]string
+	itemPerPage   int
+	currentPage   int
+
+	msgID  any
+	chatID any
+}
+
+// set the struct used to filter the datatable
+
+type dataHandlerFunc func(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filterInput []byte) []string
+
+func New(
+	b *bot.Bot,
+	itemPerPage int,
+	dataHandlerFunc dataHandlerFunc,
+	sessions map[int64]*questionaire.Questionaire,
+	filterKeys []string,
+) *DataTable {
+	prefix := "dt" + bot.RandomString(14)
+	fmt.Println("new datatable", prefix)
+	p := &DataTable{
+		prefix:               prefix,
+		onError:              defaultOnError,
+		dataHandler:          dataHandlerFunc,
+		itemPerPage:          itemPerPage,
+		CtrlBack:             Button{Text: "⏮️", CallbackData: "back"},
+		CtrlNext:             Button{Text: "⏭️", CallbackData: "next"},
+		CtrlClose:            Button{Text: "✖️", CallbackData: "close"},
+		CtrlFilter:           Button{Text: "🔎", CallbackData: "filter"},
+		conversationSessions: sessions,
+		filterKeys:           filterKeys,
+		filterMenu:           NewFilter(filterKeys),
+		currentFilter:        map[string][]string{},
+	}
+
+	for _, filterKey := range filterKeys {
+		p.currentFilter[filterKey] = []string{}
+	}
+
+	p.callbackHandlerID = b.RegisterHandler(
+		bot.HandlerTypeCallbackQueryData,
+		p.prefix,
+		bot.MatchTypePrefix,
+		p.defaultCallback,
+	)
+
+	return p
+}
+
+// Prefix returns the prefix of the widget
+func (d *DataTable) Prefix() string {
+	return d.prefix
+}
+
+func defaultOnError(err error) {
+	log.Printf("[TG-UI-DIALOG] [ERROR] %s", err)
+}
+
+func (d *DataTable) getDataTableText() string {
+	data := strings.Join(d.data, "\n")
+
+	if data == "" {
+		data = "No data"
+	}
+	return data
+}
+
+func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
+	var kb [][]models.InlineKeyboardButton
+
+	if d.currentPage > 1 {
+		d.CtrlBack.CallbackData = fmt.Sprintf("%d", d.currentPage-1)
+	}
+
+	d.CtrlNext.CallbackData = fmt.Sprintf("%d", d.currentPage+1)
+
+	navigateNode := []models.InlineKeyboardButton{}
+
+	// if d.currentPage > 1 {
+	// 	d.CtrlBack.Text = "Back"
+	// } else {
+	// 	d.CtrlBack.Text = "."
+	// }
+
+	navigateNode = append(navigateNode, d.CtrlBack.buildKB(d.prefix))
+	navigateNode = append(navigateNode, d.CtrlNext.buildKB(d.prefix))
+
+	kb = append(kb, navigateNode)
+
+	if len(d.filterKeys) > 0 {
+		kb = append(kb, []models.InlineKeyboardButton{
+			d.CtrlFilter.buildKB(d.prefix),
+		})
+	}
+
+	kb = append(kb, []models.InlineKeyboardButton{
+		d.CtrlClose.buildKB(d.prefix),
+	})
+
+	params := &bot.SendMessageParams{
+		ChatID:      chatID,
+		Text:        d.getDataTableText(),
+		ParseMode:   models.ParseModeMarkdown,
+		ReplyMarkup: models.InlineKeyboardMarkup{InlineKeyboard: kb},
+	}
+
+	return params
+}
+
+func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, pageNum int, filterInput []byte) (*models.Message, error) {
+	d.currentPage = pageNum
+	d.data = d.dataHandler(ctx, b, d.itemPerPage, d.currentPage, filterInput)
+	params := d.rebuildControls(chatID)
+	m, err := b.SendMessage(ctx, params)
+	d.msgID = m.ID
+	d.chatID = m.Chat.ID
+	d.SaveFilter(filterInput)
+
+	return m, err
+}
+
+func (d *DataTable) SaveFilter(filterInput []byte) {
+
+	fmt.Println("[datatable] SaverFilter", string(filterInput))
+
+	json.Unmarshal(filterInput, &d.currentFilter)
+
+	fmt.Println("[datatable] Current Filter:", d.currentFilter)
+}
+func (d *DataTable) UpdateFilter(key, value string) {
+	d.currentFilter[key] = []string{value}
+}
+
+func (d *DataTable) defaultCallback(ctx context.Context, b *bot.Bot, update *models.Update) {
+	fmt.Println("[datatable] default callback fired, received:", update.CallbackQuery.Data)
+	ok, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: update.CallbackQuery.ID})
+	if err != nil {
+		d.onError(err)
+	}
+	if !ok {
+		d.onError(fmt.Errorf("failed to answer callback query"))
+	}
+
+	data := strings.TrimPrefix(update.CallbackQuery.Data, d.prefix)
+
+	// fmt.Println("callback data:", data, "prefix:", d.prefix)
+
+	if data == "close" {
+		_, err := b.DeleteMessage(ctx, &bot.DeleteMessageParams{
+			ChatID:    update.CallbackQuery.Message.Message.Chat.ID,
+			MessageID: update.CallbackQuery.Message.Message.ID,
+		})
+		if err != nil {
+			d.onError(err)
+		}
+		return
+	} else if data == "filter" {
+
+		_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+			ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
+			MessageID:   update.CallbackQuery.Message.Message.ID,
+			Text:        "Filter By:",
+			ParseMode:   models.ParseModeMarkdown,
+			ReplyMarkup: d.filterMenu.buildKB(d.prefix),
+		})
+		if err != nil {
+			fmt.Println("filter error")
+			d.onError(err)
+		}
+
+		return
+	} else if strings.HasPrefix(data, "filter_") {
+
+		filterKey := strings.TrimPrefix(data, "filter_")
+		//get input from user for the value of filter key
+
+		mapKeysChoice := make(map[string][]string)
+		mapKeysChoice[filterKey] = nil
+
+		d.conversationSessions[update.CallbackQuery.Message.Message.Chat.ID] =
+			questionaire.NewBuilder(d.chatID).
+				AddQuestion(
+					filterKey,
+					"Enter value for "+filterKey,
+					nil,
+					nil,
+				)
+
+		fun := func(ctx context.Context, b *bot.Bot, chatID any, result []byte) error {
+
+			d.currentPage = 1 //reset current page to 1
+
+			var temp map[string][]string
+			json.Unmarshal(result, &temp)
+
+			fmt.Println("parsing", temp, string(result))
+
+			d.UpdateFilter(filterKey, temp[filterKey][0])
+
+			fmt.Println("[datatable]filter conversation:", update.CallbackQuery.Message.Message.Chat.ID)
+			d.data = d.dataHandler(ctx, b, d.itemPerPage, d.currentPage, result)
+			params := d.rebuildControls(d.chatID)
+			_, errEdit := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+				ChatID:      d.chatID,
+				MessageID:   d.msgID.(int),
+				Text:        d.getDataTableText(),
+				ParseMode:   models.ParseModeMarkdown,
+				ReplyMarkup: params.ReplyMarkup,
+			})
+			if errEdit != nil {
+				d.onError(errEdit)
+				return err
+			}
+			return nil
+		}
+
+		d.conversationSessions[update.CallbackQuery.Message.Message.Chat.ID].SetOnDoneHandler(fun)
+
+		d.conversationSessions[update.CallbackQuery.Message.Message.Chat.ID].Ask(ctx, b, update.CallbackQuery.Message.Message.Chat.ID)
+
+		return
+	}
+
+	pageNum, _ := strconv.Atoi(data)
+
+	d.currentPage = pageNum
+
+	var filterBytes []byte
+	if d.currentFilter != nil {
+		filterBytes, _ = json.Marshal(d.currentFilter)
+	}
+
+	fmt.Println(string(filterBytes), d.currentFilter)
+
+	d.data = d.dataHandler(ctx, b, d.itemPerPage, d.currentPage, filterBytes)
+
+	params := d.rebuildControls(update.CallbackQuery.Message.Message.Chat.ID)
+
+	_, errEdit := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+		ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
+		MessageID:   update.CallbackQuery.Message.Message.ID,
+		Text:        d.getDataTableText(),
+		ParseMode:   models.ParseModeMarkdown,
+		ReplyMarkup: params.ReplyMarkup,
+	})
+	if errEdit != nil {
+		d.onError(errEdit)
+	}
+
+}
