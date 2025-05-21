@@ -60,7 +60,7 @@ func New(
 		itemPerPage:          itemPerPage,
 		CtrlBack:             Button{Text: "⏮️", CallbackData: "back"},
 		CtrlNext:             Button{Text: "⏭️", CallbackData: "next"},
-		CtrlClose:            Button{Text: "✖️", CallbackData: "close"},
+		CtrlClose:            Button{Text: "❌", CallbackData: "close"},
 		CtrlFilter:           Button{Text: "🔎", CallbackData: "filter"},
 		conversationSessions: sessions,
 		filterKeys:           filterKeys,

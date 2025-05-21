@@ -45,7 +45,7 @@ func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
 		}
 	}
 
-	inlineKB.Row().Button("Cancel", []byte("cancel"), onCancel)
+	inlineKB.Row().Button("❌", []byte("cancel"), onCancel)
 
 	m.Kb = inlineKB
 
@@ -57,13 +57,6 @@ func onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessa
 	b.DeleteMessage(ctx, &bot.DeleteMessageParams{
 		ChatID:    mes.Message.Chat.ID,
 		MessageID: mes.Message.ID,
-	})
-}
-
-func onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: mes.Message.Chat.ID,
-		Text:   "You selected: " + string(data),
 	})
 }
 
