@@ -1,6 +1,8 @@
 package datatable
 
 import (
+	"fmt"
+
 	"github.com/go-telegram/bot/models"
 )
 
@@ -34,7 +36,7 @@ func (f *Filter) buildKB(prefix string) models.InlineKeyboardMarkup {
 		InlineKeyboard: [][]models.InlineKeyboardButton{},
 	}
 
-	// fmt.Println("building keyboard for filter:", len(f.Buttons))
+	fmt.Println("building keyboard for filter:", len(f.Buttons), "prefix:", prefix)
 
 	for _, btn := range f.Buttons {
 		params.InlineKeyboard = append(params.InlineKeyboard, []models.InlineKeyboardButton{

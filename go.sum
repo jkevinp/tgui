@@ -1,2 +1,6 @@
+github.com/SentimensRG/ctx v0.0.0-20180729130232-0bfd988c655d h1:CbB/Ef3TyBvSSJx2HDSUiw49ONTpaX6BGiI0jJEX6b8=
+github.com/SentimensRG/ctx v0.0.0-20180729130232-0bfd988c655d/go.mod h1:cfn0Ycx1ASzCkl8+04zI4hrclf9YQ1QfncxzFiNtQLo=
 github.com/go-telegram/bot v1.15.0 h1:/ba5pp084MUhjR5sQDymQ7JNZ001CQa7QjtxLWcuGpg=
 github.com/go-telegram/bot v1.15.0/go.mod h1:i2TRs7fXWIeaceF3z7KzsMt/he0TwkVC680mvdTFYeM=
+github.com/sentimensrg/ctx v0.0.0-20180729130232-0bfd988c655d h1:/PITncxK1NEfHy1k0ze4VklDt62iWz1Se9yc0iTEsew=
+github.com/sentimensrg/ctx v0.0.0-20180729130232-0bfd988c655d/go.mod h1:sW4sRRfi2aJxwxA65DUjh8GMXSSJgyLQX+Bpdjv52PU=

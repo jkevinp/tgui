@@ -6,25 +6,15 @@ import (
 	"fmt"
 
 	"github.com/go-telegram/bot/models"
+	"github.com/jkevinp/tgui/button"
 	"github.com/jkevinp/tgui/helper"
 	"github.com/jkevinp/tgui/keyboard/inline"
 
 	"github.com/go-telegram/bot"
+	"github.com/sentimensrg/ctx/mergectx"
 )
 
 type onDoneHandlerFunc func(ctx context.Context, b *bot.Bot, chatID any, answersByte []byte) error
-
-type Button struct {
-	Text         string
-	CallbackData string
-}
-
-func (b *Button) buildKB(prefix string) models.InlineKeyboardButton {
-	return models.InlineKeyboardButton{
-		Text:         b.Text,
-		CallbackData: prefix + b.CallbackData,
-	}
-}
 
 type Questionaire struct {
 	questions            []*Question
@@ -35,27 +25,50 @@ type Questionaire struct {
 	msgIds     []int
 
 	chatID any
+
+	ctx context.Context
+
+	InitialData map[string]interface{}
 }
 
-func (q *Questionaire) GetAnswers() map[string][]string {
-	answers := make(map[string][]string)
+func (q *Questionaire) GetAnswers() map[string]interface{} {
+	answers := make(map[string]interface{})
 	for _, question := range q.questions {
-		answers[question.Key] = question.Answers
+		if question.isTextAnswer {
+			answers[question.Key] = question.Answer
+		} else {
+			answers[question.Key] = question.ChoicesSelected
+		}
 	}
+
+	for key, value := range q.InitialData {
+		answers[key] = value
+	}
+
 	return answers
 }
 
+func (q *Questionaire) SetInitialData(data map[string]interface{}) *Questionaire {
+	q.InitialData = data
+	return q
+}
+
 type Question struct {
-	Key          string
-	Text         string
-	Choices      [][]Button
-	Answers      []string
-	validator    func(answer string) error
-	isTextAnswer bool
+	Key             string
+	Text            string
+	Choices         [][]button.Button
+	ChoicesSelected []string
+	Answer          string
+	validator       func(answer string) error
+	isTextAnswer    bool
 }
 
 func (q *Question) SetAnswer(answer string) {
-	q.Answers = append(q.Answers, answer)
+	q.Answer = answer
+}
+
+func (q *Question) AddChoiceSelected(answer string) {
+	q.ChoicesSelected = append(q.ChoicesSelected, answer)
 }
 
 func (q *Question) Validate(answer string) error {
@@ -77,15 +90,20 @@ func NewBuilder(chatID any) *Questionaire {
 	}
 }
 
+func (q *Questionaire) SetContext(ctx context.Context) *Questionaire {
+	q.ctx = ctx
+	return q
+}
+
 // creates a question that expects array of answer
-func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choices [][]Button, validateFunc func(answer string) error) *Questionaire {
+func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choices [][]button.Button, validateFunc func(answer string) error) *Questionaire {
 	question := &Question{
-		Key:          key,
-		Text:         text,
-		Choices:      make([][]Button, 0),
-		Answers:      make([]string, 0),
-		validator:    validateFunc,
-		isTextAnswer: false,
+		Key:             key,
+		Text:            text,
+		Choices:         make([][]button.Button, 0),
+		ChoicesSelected: make([]string, 0),
+		validator:       validateFunc,
+		isTextAnswer:    false,
 	}
 
 	question.Choices = choices
@@ -98,14 +116,14 @@ func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choice
 }
 
 // creatte a question that expects a text answer
-func (q *Questionaire) AddQuestion(key string, text string, choices [][]Button, validateFunc func(answer string) error) *Questionaire {
+func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.Button, validateFunc func(answer string) error) *Questionaire {
 	question := &Question{
-		Key:          key,
-		Text:         text,
-		Choices:      choices,
-		Answers:      make([]string, 0),
-		validator:    validateFunc,
-		isTextAnswer: true,
+		Key:             key,
+		Text:            text,
+		Choices:         choices,
+		ChoicesSelected: make([]string, 0),
+		validator:       validateFunc,
+		isTextAnswer:    true,
 	}
 
 	q.questions = append(q.questions, question)
@@ -173,6 +191,10 @@ func (q *Questionaire) SetOnDoneHandler(handler onDoneHandlerFunc) *Questionaire
 // Called when all questions have been asked, will pass answer struct marshalled to json bytes
 func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Update) {
 
+	if q.ctx != nil {
+		ctx = mergectx.Join(ctx, q.ctx)
+	}
+
 	result, err := GetResultByte(q)
 
 	if err != nil {
@@ -208,11 +230,11 @@ func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
 
 	params := &bot.SendMessageParams{
 		ChatID:    chatID,
-		Text:      helper.EscapeTelegramReserved(q.questions[q.currentQuestionIndex].Text),
+		Text:      helper.EscapeTelegramReserved(curQuestion.Text),
 		ParseMode: models.ParseModeMarkdown,
 	}
 
-	if len(q.questions[q.currentQuestionIndex].Choices) > 0 {
+	if len(curQuestion.Choices) > 0 && !curQuestion.isTextAnswer {
 		inlineKB := inline.New(b, inline.WithPrefix(q.callbackID))
 
 		for _, choiceRow := range q.questions[q.currentQuestionIndex].Choices {
@@ -280,6 +302,21 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 
 	if !curQuestion.isTextAnswer && answer == "cmd_done" {
 		q.currentQuestionIndex++
+	} else if !curQuestion.isTextAnswer && answer != "cmd_done" {
+		if err := curQuestion.Validate(answer); err != nil {
+
+			b.SendMessage(context.Background(), &bot.SendMessageParams{
+				ChatID:    chatID,
+				Text:      err.Error(),
+				ParseMode: models.ParseModeMarkdown,
+			})
+
+			q.Ask(context.Background(), b, chatID)
+
+			return false
+		}
+
+		curQuestion.AddChoiceSelected(answer)
 	} else {
 		if err := curQuestion.Validate(answer); err != nil {
 

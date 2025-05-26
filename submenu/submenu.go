@@ -21,7 +21,7 @@ type SubMenuItem struct {
 	SubMenuOnSelect inline.OnSelect
 }
 
-type SubMenuOnSelect func(ctx context.Context, b *bot.Bot, update *models.Update, data []byte)
+// type SubMenuOnSelect func(ctx context.Context, b *bot.Bot, update *models.Update, data []byte)
 
 func NewSubMenuItem(text string, callbackData string, fun inline.OnSelect) *SubMenuItem {
 	return &SubMenuItem{
