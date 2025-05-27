@@ -230,7 +230,7 @@ func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
 
 	params := &bot.SendMessageParams{
 		ChatID:    chatID,
-		Text:      helper.EscapeTelegramReserved(curQuestion.Text),
+		Text:      "✒️" + helper.EscapeTelegramReserved(curQuestion.Text),
 		ParseMode: models.ParseModeMarkdown,
 	}
 
