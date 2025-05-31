@@ -16,6 +16,14 @@ import (
 
 type onDoneHandlerFunc func(ctx context.Context, b *bot.Bot, chatID any, answersByte []byte) error
 
+type QuestionFormat int
+
+const (
+	QuestionFormatText  QuestionFormat = 0
+	QuestionFormatRadio QuestionFormat = 1
+	QuestionFormatCheck QuestionFormat = 2
+)
+
 type Questionaire struct {
 	questions            []*Question
 	currentQuestionIndex int
@@ -34,10 +42,12 @@ type Questionaire struct {
 func (q *Questionaire) GetAnswers() map[string]interface{} {
 	answers := make(map[string]interface{})
 	for _, question := range q.questions {
-		if question.isTextAnswer {
-			answers[question.Key] = question.Answer
-		} else {
+		if question.QuestionFormat == QuestionFormatCheck {
+
 			answers[question.Key] = question.ChoicesSelected
+		} else {
+
+			answers[question.Key] = question.Answer
 		}
 	}
 
@@ -60,7 +70,7 @@ type Question struct {
 	ChoicesSelected []string
 	Answer          string
 	validator       func(answer string) error
-	isTextAnswer    bool
+	QuestionFormat  QuestionFormat
 }
 
 func (q *Question) SetAnswer(answer string) {
@@ -103,7 +113,7 @@ func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choice
 		Choices:         make([][]button.Button, 0),
 		ChoicesSelected: make([]string, 0),
 		validator:       validateFunc,
-		isTextAnswer:    false,
+		QuestionFormat:  QuestionFormatCheck,
 	}
 
 	question.Choices = choices
@@ -123,7 +133,14 @@ func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.B
 		Choices:         choices,
 		ChoicesSelected: make([]string, 0),
 		validator:       validateFunc,
-		isTextAnswer:    true,
+		// isTextAnswer:    true,
+	}
+
+	if question.Choices == nil {
+		question.QuestionFormat = QuestionFormatText
+		question.Choices = make([][]button.Button, 0)
+	} else {
+		question.QuestionFormat = QuestionFormatRadio
 	}
 
 	q.questions = append(q.questions, question)
@@ -234,18 +251,22 @@ func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
 		ParseMode: models.ParseModeMarkdown,
 	}
 
-	if len(curQuestion.Choices) > 0 && !curQuestion.isTextAnswer {
+	if len(curQuestion.Choices) > 0 && curQuestion.QuestionFormat != QuestionFormatText {
 		inlineKB := inline.New(b, inline.WithPrefix(q.callbackID))
 
 		for _, choiceRow := range q.questions[q.currentQuestionIndex].Choices {
 			inlineKB.Row()
 
 			for _, i := range choiceRow {
-				inlineKB.Button(i.Text, []byte(i.CallbackData), q.onInlineKeyboardSelect)
+				inlineKB.Button(
+					helper.EscapeTelegramReserved(i.Text),
+					[]byte(i.CallbackData),
+					q.onInlineKeyboardSelect,
+				)
 			}
 
 		}
-		if !curQuestion.isTextAnswer {
+		if curQuestion.QuestionFormat == QuestionFormatCheck {
 			inlineKB.Row().Button("✅", []byte("cmd_done"), q.onDoneChoosing)
 		}
 
@@ -300,9 +321,9 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 	fmt.Println("answer:", answer)
 	curQuestion := q.questions[q.currentQuestionIndex]
 
-	if !curQuestion.isTextAnswer && answer == "cmd_done" {
+	if curQuestion.QuestionFormat == QuestionFormatCheck && answer == "cmd_done" {
 		q.currentQuestionIndex++
-	} else if !curQuestion.isTextAnswer && answer != "cmd_done" {
+	} else if curQuestion.QuestionFormat == QuestionFormatCheck && answer != "cmd_done" {
 		if err := curQuestion.Validate(answer); err != nil {
 
 			b.SendMessage(context.Background(), &bot.SendMessageParams{
@@ -333,7 +354,7 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 
 		curQuestion.SetAnswer(answer)
 
-		if curQuestion.isTextAnswer {
+		if curQuestion.QuestionFormat != QuestionFormatCheck {
 			q.currentQuestionIndex++
 		}
 	}

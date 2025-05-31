@@ -32,8 +32,8 @@ func (bg *ButtonGrid) Row() *ButtonGrid {
 	return bg
 }
 
-func (bg *ButtonGrid) Add(btn Button) *ButtonGrid {
-	bg.Buttons[len(bg.Buttons)-1] = append(bg.Buttons[len(bg.Buttons)-1], btn)
+func (bg *ButtonGrid) Add(btn ...Button) *ButtonGrid {
+	bg.Buttons[len(bg.Buttons)-1] = append(bg.Buttons[len(bg.Buttons)-1], btn...)
 
 	return bg
 }

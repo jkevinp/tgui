@@ -42,6 +42,20 @@ func ParseTGTags(v interface{}) (map[string]map[string]string, error) {
 			}
 		}
 
+		jsonTag := field.Tag.Get("json")
+		fmt.Println("jsonTag:", jsonTag)
+		if jsonTag != "" {
+			split := strings.Split(jsonTag, ",")
+
+			if len(split) > 0 {
+				if split[0] != "" {
+					fmt.Println("using json tag:", split[0])
+					key = split[0]
+				}
+			}
+
+		}
+
 		result[key] = tagsMap
 
 	}
