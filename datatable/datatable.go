@@ -125,12 +125,6 @@ func New(
 	}
 
 	p.filterButtons = filterMenu.Build()
-	// p.callbackHandlerID = b.RegisterHandler(
-	// 	bot.HandlerTypeCallbackQueryData,
-	// 	p.prefix,
-	// 	bot.MatchTypePrefix,
-	// 	p.defaultCallback,
-	// )
 
 	return p
 }
@@ -241,7 +235,6 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 
 			fun := func(ctx context.Context, b *bot.Bot, chatID any, result []byte) error {
 
-				// d.currentPage = 1 //reset current page to 1
 				d.currentFilter["pageNum"] = float64(1)
 
 				var temp map[string]string
@@ -252,19 +245,6 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 				d.updateFilter(filterKey, temp[filterKey])
 
 				fmt.Println("[datatable]filter conversation:", d.msgID)
-				// d.InvokeDataHandler(ctx, b, int(d.currentFilter["pageSize"].(float64)), int(d.currentFilter["pageNum"].(float64)), result)
-				// params := d.rebuildControls(d.chatID)
-				// _, errEdit := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-				// 	ChatID:      d.chatID,
-				// 	MessageID:   d.msgID.(int),
-				// 	Text:        d.text,
-				// 	ParseMode:   models.ParseModeMarkdown,
-				// 	ReplyMarkup: params.ReplyMarkup,
-				// })
-				// if errEdit != nil {
-				// 	d.onError(errEdit)
-				// 	return errEdit
-				// }
 
 				_, err := d.Show(ctx, b, chatID, d.getFilterBytes())
 
@@ -420,34 +400,6 @@ func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, filterInpu
 	d.chatID = m.Chat.ID
 	return m, err
 }
-
-// func (d *DataTable) build(b *bot.Bot, ctx context.Context, update *models.Update, data string) {
-// 	pageNum, _ := strconv.Atoi(data)
-
-// 	d.currentPage = pageNum
-
-// 	var filterBytes []byte
-// 	if d.currentFilter != nil {
-// 		filterBytes, _ = json.Marshal(d.currentFilter)
-// 	}
-
-// 	fmt.Println(string(filterBytes), d.currentFilter)
-
-// 	d.InvokeDataHandler(ctx, b, d.itemPerPage, d.currentPage, filterBytes)
-
-// 	params := d.rebuildControls(update.CallbackQuery.Message.Message.Chat.ID)
-
-// 	_, errEdit := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-// 		ChatID:      update.CallbackQuery.Message.Message.Chat.ID,
-// 		MessageID:   update.CallbackQuery.Message.Message.ID,
-// 		Text:        d.text,
-// 		ParseMode:   models.ParseModeMarkdown,
-// 		ReplyMarkup: params.ReplyMarkup,
-// 	})
-// 	if errEdit != nil {
-// 		d.onError(errEdit)
-// 	}
-// }
 
 func (d *DataTable) saveFilter(filterInput []byte) {
 
