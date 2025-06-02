@@ -32,9 +32,9 @@ type DataTable struct {
 	text        string
 	replyMarkup [][]button.Button
 
-	prefix               string
-	onError              OnErrorHandler
-	conversationSessions map[int64]*questionaire.Questionaire
+	prefix              string
+	onError             OnErrorHandler
+	questionaireManager *questionaire.Manager
 
 	// callbackHandlerID string
 	dataHandler dataHandlerFunc
@@ -82,24 +82,24 @@ func New(
 	b *bot.Bot,
 	itemPerPage int,
 	dataHandlerFunc dataHandlerFunc,
-	sessions map[int64]*questionaire.Questionaire,
+	manager *questionaire.Manager,
 	filterKeys []string,
 ) *DataTable {
 	prefix := "dt" + bot.RandomString(14)
 	fmt.Println("new datatable", prefix)
 	p := &DataTable{
-		prefix:               prefix,
-		onError:              defaultOnError,
-		dataHandler:          dataHandlerFunc,
-		CtrlBack:             button.Button{Text: BACK, CallbackData: "back"},
-		CtrlNext:             button.Button{Text: NEXT, CallbackData: "next"},
-		CtrlClose:            button.Button{Text: CLOSE, CallbackData: "close"},
-		CtrlFilter:           button.Button{Text: FILTER, CallbackData: "filter"},
-		conversationSessions: sessions,
-		filterKeys:           filterKeys,
-		filterMenu:           NewFilter(filterKeys),
-		currentFilter:        make(map[string]interface{}),
-		b:                    b,
+		prefix:              prefix,
+		onError:             defaultOnError,
+		dataHandler:         dataHandlerFunc,
+		CtrlBack:            button.Button{Text: BACK, CallbackData: "back"},
+		CtrlNext:            button.Button{Text: NEXT, CallbackData: "next"},
+		CtrlClose:           button.Button{Text: CLOSE, CallbackData: "close"},
+		CtrlFilter:          button.Button{Text: FILTER, CallbackData: "filter"},
+		questionaireManager: manager,
+		filterKeys:          filterKeys,
+		filterMenu:          NewFilter(filterKeys),
+		currentFilter:       make(map[string]interface{}),
+		b:                   b,
 	}
 
 	p.currentFilter["pageSize"] = float64(itemPerPage)
@@ -187,7 +187,18 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 		for _, b := range d.filterButtons {
 			filterNode.Row()
 			for _, btn := range b {
-				filterNode.Button(btn.Text, []byte(btn.CallbackData), btn.OnClick)
+
+				filterKey := strings.TrimPrefix(btn.CallbackData, d.prefix+"filter_")
+
+				if d.currentFilter[filterKey] != nil {
+					btn.Text = fmt.Sprintf("%s: %v", btn.Text, d.currentFilter[filterKey])
+				}
+
+				filterNode.Button(
+					btn.Text,
+					[]byte(btn.CallbackData),
+					btn.OnClick,
+				)
 			}
 		}
 
@@ -220,14 +231,13 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 			mapKeysChoice := make(map[string][]string)
 			mapKeysChoice[filterKey] = nil
 
-			d.conversationSessions[d.chatID.(int64)] =
-				questionaire.NewBuilder(d.chatID).
-					AddQuestion(
-						filterKey,
-						"Enter value for "+filterKey,
-						nil,
-						nil,
-					)
+			q := questionaire.NewBuilder(d.chatID, d.questionaireManager).
+				AddQuestion(
+					filterKey,
+					"Enter value for "+filterKey,
+					nil,
+					nil,
+				)
 
 			fun := func(ctx context.Context, b *bot.Bot, chatID any, result []byte) error {
 
@@ -260,9 +270,9 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 
 				return err
 			}
+			q.SetOnDoneHandler(fun)
 
-			d.conversationSessions[d.chatID.(int64)].SetOnDoneHandler(fun)
-			d.conversationSessions[d.chatID.(int64)].Ask(ctx, b, d.chatID.(int64))
+			q.Ask(ctx, b, d.chatID.(int64))
 
 			return
 		} else if strings.HasPrefix(command, "setpage_") {

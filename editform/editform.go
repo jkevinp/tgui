@@ -34,7 +34,7 @@ type EditForm struct {
 
 	text string
 
-	qSessions map[int64]*questionaire.Questionaire
+	manager *questionaire.Manager
 
 	initialData map[string]interface{}
 
@@ -63,7 +63,7 @@ func New(
 	onDoneEdit OnDoneEditHandler, // onDoneEdit function
 	choices map[string][][]button.Button,
 	chatID any,
-	qSessions map[int64]*questionaire.Questionaire, //conversation sessions
+	manager *questionaire.Manager, //conversation sessions
 
 ) *EditForm {
 	prefix := "dt" + bot.RandomString(14)
@@ -74,7 +74,7 @@ func New(
 		botInstance:       b,
 		OnDoneEditHandler: onDoneEdit,
 		text:              text,
-		qSessions:         qSessions,
+		manager:           manager,
 		initialData:       make(map[string]interface{}),
 		choices:           choices,
 		chatID:            chatID,
@@ -190,7 +190,7 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 			// 	Text:   fmt.Sprintf("Edit %s", command),
 			// })
 
-			q := questionaire.NewBuilder(mes.Message.Chat.ID).
+			q := questionaire.NewBuilder(mes.Message.Chat.ID, f.manager).
 				SetOnDoneHandler(func(ctx context.Context, b *bot.Bot, chatID any, answersByte []byte) error {
 
 					var req map[string]interface{}
@@ -218,8 +218,6 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 			} else {
 				q.AddQuestion(key, "Enter new value for: "+key, nil, nil)
 			}
-
-			f.qSessions[mes.Message.Chat.ID] = q
 
 			q.Ask(ctx, b, mes.Message.Chat.ID)
 

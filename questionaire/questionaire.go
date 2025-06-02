@@ -37,6 +37,7 @@ type Questionaire struct {
 	ctx context.Context
 
 	InitialData map[string]interface{}
+	manager     *Manager
 }
 
 func (q *Questionaire) GetAnswers() map[string]interface{} {
@@ -88,7 +89,8 @@ func (q *Question) Validate(answer string) error {
 	return nil
 }
 
-func NewBuilder(chatID any) *Questionaire {
+// NewBuilder creates a new Questionaire instance with an optional manager
+func NewBuilder(chatID any, manager *Manager) *Questionaire {
 	fmt.Println("new question builder:", chatID)
 	return &Questionaire{
 		questions:            make([]*Question, 0),
@@ -97,7 +99,14 @@ func NewBuilder(chatID any) *Questionaire {
 		currentQuestionIndex: 0,
 		onDoneHandler:        nil,
 		msgIds:               make([]int, 0),
+		manager:              manager,
 	}
+}
+
+// SetManager sets or updates the manager for this questionnaire
+func (q *Questionaire) SetManager(m *Manager) *Questionaire {
+	q.manager = m
+	return q
 }
 
 func (q *Questionaire) SetContext(ctx context.Context) *Questionaire {
@@ -240,10 +249,14 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 
 }
 
+// Ask starts the questionnaire, registering with manager if available
 func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
-
 	curQuestion := q.questions[q.currentQuestionIndex]
 	fmt.Println("[question] -> ", q.callbackID, "asking question about:", curQuestion, "choices:", q.questions[q.currentQuestionIndex].Choices)
+
+	if q.manager != nil && q.chatID != nil {
+		q.manager.Add(q.chatID.(int64), q)
+	}
 
 	params := &bot.SendMessageParams{
 		ChatID:    chatID,
