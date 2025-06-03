@@ -66,8 +66,9 @@ func New(
 	manager *questionaire.Manager, //conversation sessions
 
 ) *EditForm {
-	prefix := "dt" + bot.RandomString(14)
+	prefix := "ef" + bot.RandomString(14)
 	fmt.Println("new editform", prefix)
+
 	f := EditForm{
 		prefix:            prefix,
 		data:              make(map[string]interface{}),
@@ -100,6 +101,27 @@ func New(
 
 	for key, val := range f.data {
 		fmt.Println("[editform] key:", key, "val:", val, "type:", reflect.TypeOf(val))
+		//add cancel for choices
+		btnCancel := []button.Button{
+			{
+				Text:         "❌ Cancel",
+				CallbackData: prefix + "cancel_" + key,
+				OnClick: func(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, callbackData []byte) {
+					fmt.Println("[EditForm] cancel choice for key:", key)
+					b.SendMessage(ctx, &bot.SendMessageParams{
+						ChatID: mes.Message.Chat.ID,
+						Text:   "Cancelled choice for " + key,
+					})
+				},
+			},
+		}
+
+		if f.choices[key] != nil {
+			f.choices[key] = append(f.choices[key], btnCancel)
+		} else {
+			f.choices[key] = [][]button.Button{btnCancel}
+		}
+
 	}
 
 	for key, val := range f.data {
@@ -185,11 +207,6 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 			fmt.Println("[EditForm.editCallback] edit", command)
 			key := strings.TrimPrefix(command, "edit_")
 
-			// f.botInstance.SendMessage(ctx, &bot.SendMessageParams{
-			// 	ChatID: mes.Message.Chat.ID,
-			// 	Text:   fmt.Sprintf("Edit %s", command),
-			// })
-
 			q := questionaire.NewBuilder(mes.Message.Chat.ID, f.manager).
 				SetOnDoneHandler(func(ctx context.Context, b *bot.Bot, chatID any, answersByte []byte) error {
 
@@ -198,15 +215,25 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 						return err
 					}
 
-					if f.stringTransformer[key] != nil {
-						var err error
-						req[key], err = f.stringTransformer[key](req[key].(string))
-						if err != nil {
-							return err
-						}
+					fmt.Println("[EditForm.editCallback] received answers:", req)
+
+					answer := req[key]
+					if answer == nil {
+						return fmt.Errorf("no answer for key: %s", key)
 					}
 
-					f.data[key] = req[key]
+					if answer != f.prefix+"cancel_"+key {
+						if f.stringTransformer[key] != nil {
+							var err error
+							req[key], err = f.stringTransformer[key](req[key].(string))
+							if err != nil {
+								return err
+							}
+						}
+
+						f.data[key] = req[key]
+
+					}
 
 					f.Show(ctx)
 
@@ -214,7 +241,12 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 				})
 
 			if f.choices[key] != nil {
-				q.AddQuestion(key, "Select value for "+key+" or enter new value: ", f.choices[key], nil)
+				q.AddQuestion(
+					key,
+					"Select value for "+key+" or enter new value: ",
+					f.choices[key],
+					nil,
+				)
 			} else {
 				q.AddQuestion(key, "Enter new value for: "+key, nil, nil)
 			}

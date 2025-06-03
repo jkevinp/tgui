@@ -314,12 +314,12 @@ func (q *Questionaire) onDoneChoosing(ctx context.Context, b *bot.Bot, mes model
 }
 
 func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	m, _ := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: q.chatID,
-		Text:   "You selected: " + string(data),
-	})
+	// m, _ := b.SendMessage(ctx, &bot.SendMessageParams{
+	// 	ChatID: q.chatID,
+	// 	Text:   "You selected: " + string(data),
+	// })
 
-	q.msgIds = append(q.msgIds, m.ID)
+	// q.msgIds = append(q.msgIds, m.ID)
 
 	// curQuestion := q.questions[q.currentQuestionIndex]
 

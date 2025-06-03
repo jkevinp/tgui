@@ -60,23 +60,43 @@ func (d *DataTable) calcStartPage() int64 {
 	if d.pagesCount < 5 { // 5 is pages buttons count
 		return 1
 	}
-	if int64(d.currentFilter["pageNum"].(float64)) < 3 { // 3 is center page button
+	if (d.currentFilter["pageNum"].(int64)) < 3 { // 3 is center page button
 		return 1
 	}
-	if int64(d.currentFilter["pageNum"].(float64)) >= d.pagesCount-2 {
+	if (d.currentFilter["pageNum"].(int64)) >= d.pagesCount-2 {
 		return d.pagesCount - 4
 	}
-	return int64(d.currentFilter["pageNum"].(float64)) - 2
+	return (d.currentFilter["pageNum"].(int64)) - 2
 }
 
 type DataResult struct {
 	Text        string
-	ReplyMarkup any
+	ReplyMarkup [][]button.Button
+	PagesCount  int64
+}
+
+func NewDataResult(text string, replyMarkup [][]button.Button, pagesCount int64) DataResult {
+	return DataResult{
+		Text:        text,
+		ReplyMarkup: replyMarkup,
+		PagesCount:  pagesCount,
+	}
+}
+
+func NewErrorDataResult(err error) DataResult {
+	return DataResult{
+		Text: err.Error(),
+		// ReplyMarkup: [][]button.Button{
+		// 	{button.Button{Text: CLOSE, CallbackData: "close"}},
+		// },
+		ReplyMarkup: nil,
+		PagesCount:  0,
+	}
 }
 
 // set the struct used to filter the datatable
 
-type dataHandlerFunc func(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filterInput []byte) (text string, replyMarkUp [][]button.Button, maxPage int64)
+type dataHandlerFunc func(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filter map[string]interface{}) DataResult
 
 func New(
 	b *bot.Bot,
@@ -102,8 +122,8 @@ func New(
 		b:                   b,
 	}
 
-	p.currentFilter["pageSize"] = float64(itemPerPage)
-	p.currentFilter["pageNum"] = float64(1)
+	p.currentFilter["pageSize"] = int64(itemPerPage)
+	p.currentFilter["pageNum"] = int64(1)
 
 	filterMenu := button.NewBuilder()
 
@@ -161,15 +181,15 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 	switch command {
 	case "next":
 		fmt.Println("[datatable.nagivateCallback] next page")
-		d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(float64) + 1
+		d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(int64) + 1
 		d.Show(ctx, b, d.chatID, d.getFilterBytes())
 	case "back":
-		fmt.Println("[datatable.nagivateCallback] back page, current page:", d.currentFilter["pageNum"].(float64))
-		// && int64(d.currentFilter["pageNum"].(float64)) <= d.pagesCount
-		if d.currentFilter["pageNum"].(float64) > 1 {
+		fmt.Println("[datatable.nagivateCallback] back page, current page:", d.currentFilter["pageNum"].(int64))
+		// && int64(d.currentFilter["pageNum"].(int64)) <= d.pagesCount
+		if d.currentFilter["pageNum"].(int64) > 1 {
 
-			d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(float64) - 1
-			fmt.Println("[datatable.nagivateCallback] back page", d.currentFilter["pageNum"].(float64))
+			d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(int64) - 1
+			fmt.Println("[datatable.nagivateCallback] back page", d.currentFilter["pageNum"].(int64))
 			d.Show(ctx, b, d.chatID, d.getFilterBytes())
 		}
 
@@ -235,7 +255,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 
 			fun := func(ctx context.Context, b *bot.Bot, chatID any, result []byte) error {
 
-				d.currentFilter["pageNum"] = float64(1)
+				d.currentFilter["pageNum"] = int64(1)
 
 				var temp map[string]string
 				json.Unmarshal(result, &temp)
@@ -265,9 +285,9 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 				d.onError(err)
 				return
 			}
-			d.currentFilter["pageNum"] = float64(pageInt)
+			d.currentFilter["pageNum"] = int64(pageInt)
 
-			fmt.Println("[datatable.nagivateCallback] set page", d.currentFilter["pageNum"].(float64))
+			fmt.Println("[datatable.nagivateCallback] set page", d.currentFilter["pageNum"].(int64))
 			d.Show(ctx, b, d.chatID, d.getFilterBytes())
 
 		} else if strings.HasPrefix(command, "remove_filter_") {
@@ -283,7 +303,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 	fmt.Println("[datatable] rebuild controls")
 
-	currentPage := int64(d.currentFilter["pageNum"].(float64))
+	currentPage := int64(d.currentFilter["pageNum"].(int64))
 
 	navigateNode := inline.New(d.b, inline.WithPrefix(d.prefix))
 
@@ -369,29 +389,29 @@ func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 	return params
 }
 
-func (d *DataTable) invokeDataHandler(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filterInput []byte) {
+func (d *DataTable) invokeDataHandler(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filter map[string]interface{}) {
 
-	data, replyMarkUp, maxPage := d.dataHandler(ctx, b, pageSize, pageNum, filterInput)
-	fmt.Println("[datatable InvokeDataHandler] filter:", string(filterInput), "data:", data, "replyMarkUp:", len(replyMarkUp), "maxPage:", maxPage)
-	d.text = data
-	d.replyMarkup = replyMarkUp
+	dataResult := d.dataHandler(ctx, b, pageSize, pageNum, filter)
+	fmt.Println("[datatable InvokeDataHandler] filter:", filter, "result:", dataResult)
+	d.text = dataResult.Text
+	d.replyMarkup = dataResult.ReplyMarkup
 
 	if d.replyMarkup == nil && d.text == "" {
 		d.text = NODATA
 	}
 
-	d.pagesCount = maxPage
+	d.pagesCount = dataResult.PagesCount
 }
 
 // show the database using the filterInput(bytes), struct must have pageSize and pageNum
-func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, filterInput []byte) (*models.Message, error) {
-	fmt.Println("[datatable] show page , filter:", string(filterInput))
+func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, filterInput map[string]interface{}) (*models.Message, error) {
+	fmt.Println("[datatable] show page , filter:", filterInput)
 	d.saveFilter(filterInput)
 	d.invokeDataHandler(
 		ctx,
 		b,
-		int(d.currentFilter["pageSize"].(float64)),
-		int(d.currentFilter["pageNum"].(float64)),
+		int(d.currentFilter["pageSize"].(int64)),
+		int(d.currentFilter["pageNum"].(int64)),
 		d.getFilterBytes(),
 	)
 	params := d.rebuildControls(chatID)
@@ -401,11 +421,28 @@ func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, filterInpu
 	return m, err
 }
 
-func (d *DataTable) saveFilter(filterInput []byte) {
+func (d *DataTable) saveFilter(filterInput map[string]interface{}) {
 
 	if d.currentFilter != nil {
-		fmt.Println("[datatable] SaveFilter", string(filterInput))
-		json.Unmarshal(filterInput, &d.currentFilter)
+		fmt.Println("[datatable] SaveFilter", filterInput)
+
+		if filterInput == nil {
+			fmt.Println("[datatable] filterInput is nil, using currentFilter")
+			// filterInput = d.currentFilter
+		} else {
+			fmt.Println("[datatable] filterInput is not nil, updating currentFilter")
+			for key, value := range filterInput {
+				if value == nil {
+					delete(d.currentFilter, key)
+				} else {
+					d.updateFilter(key, value)
+				}
+			}
+			fmt.Println("[datatable] Updated currentFilter:", d.currentFilter)
+		}
+
+		// d.currentFilter = filterInput
+		// json.Unmarshal(filterInput, &d.currentFilter)
 		fmt.Println("[datatable] Current Filter:", d.currentFilter)
 	}
 
@@ -414,7 +451,8 @@ func (d *DataTable) updateFilter(key string, value interface{}) {
 	d.currentFilter[key] = value
 }
 
-func (d *DataTable) getFilterBytes() []byte {
-	filterBytes, _ := json.Marshal(d.currentFilter)
-	return filterBytes
+func (d *DataTable) getFilterBytes() map[string]interface{} {
+	// filterBytes, _ := json.Marshal(d.currentFilter)
+	// return filterBytes
+	return d.currentFilter
 }
