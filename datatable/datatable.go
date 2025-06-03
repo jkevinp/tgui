@@ -435,7 +435,27 @@ func (d *DataTable) saveFilter(filterInput map[string]interface{}) {
 				if value == nil {
 					delete(d.currentFilter, key)
 				} else {
-					d.updateFilter(key, value)
+					if key == "pageSize" || key == "pageNum" {
+						// convert value to int64
+						if v, ok := value.(int); ok {
+							d.updateFilter(key, int64(v))
+						} else if v, ok := value.(float64); ok {
+							d.updateFilter(key, int64(v))
+						} else if v, ok := value.(string); ok {
+							if intValue, err := strconv.Atoi(v); err == nil {
+								d.updateFilter(key, int64(intValue))
+							} else {
+								fmt.Println("[datatable] error converting value to int64:", err)
+								d.updateFilter(key, v)
+							}
+						} else {
+							fmt.Println("[datatable] unknown type for value, using as is:", value)
+							d.updateFilter(key, value)
+						}
+					} else {
+						d.updateFilter(key, value)
+					}
+
 				}
 			}
 			fmt.Println("[datatable] Updated currentFilter:", d.currentFilter)
