@@ -2,7 +2,6 @@ package datatable
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strconv"
@@ -264,18 +263,20 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 					nil,
 				)
 
-			fun := func(ctx context.Context, b *bot.Bot, chatID any, result []byte) error {
+			fun := func(ctx context.Context, b *bot.Bot, chatID any, result map[string]interface{}) error {
 
 				d.currentFilter["pageNum"] = int64(1)
 
-				var temp map[string]string
-				json.Unmarshal(result, &temp)
+				// var temp map[string]string
+				// json.Unmarshal(result, &temp)
 
-				fmt.Println("parsing", temp, string(result))
+				// fmt.Println("parsing", temp, string(result))
 
-				d.updateFilter(filterKey, temp[filterKey])
+				// d.updateFilter(filterKey, temp[filterKey])
 
-				fmt.Println("[datatable]filter conversation:", d.msgID)
+				d.updateFilter(filterKey, result[filterKey])
+
+				fmt.Println("[datatable]filter conversation:", d.currentFilter, d.msgID)
 
 				_, err := d.Show(ctx, b, chatID, d.getFilterBytes())
 

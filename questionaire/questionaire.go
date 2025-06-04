@@ -14,7 +14,7 @@ import (
 	"github.com/sentimensrg/ctx/mergectx"
 )
 
-type onDoneHandlerFunc func(ctx context.Context, b *bot.Bot, chatID any, answersByte []byte) error
+type onDoneHandlerFunc func(ctx context.Context, b *bot.Bot, chatID any, answers map[string]interface{}) error
 
 type QuestionFormat int
 
@@ -304,16 +304,25 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 		ctx = mergectx.Join(ctx, q.ctx)
 	}
 
-	result, err := GetResultByte(q)
+	resultByte, err := GetResultByte(q)
 
 	if err != nil {
-		fmt.Println("error getting result:", err)
+		fmt.Println("[Questionaire] error getting result:", err)
 		return
 	}
-	fmt.Println("result of questionaire:", string(result))
+	fmt.Println("[Questionaire] result of questionaire:", string(resultByte))
+
+	if q.onDoneHandler == nil {
+		fmt.Println("[Questionaire] no onDoneHandler set, skipping")
+		return
+	}
+	result := make(map[string]interface{})
+	if err := json.Unmarshal(resultByte, &result); err != nil {
+		fmt.Println("[Questionaire] error unmarshalling result:", err)
+	}
 
 	if err := q.onDoneHandler(ctx, b, q.chatID, result); err != nil {
-		fmt.Println("error calling onDoneHandler:", err)
+		fmt.Println("[Questionaire] error calling onDoneHandler:", err)
 		b.SendMessage(ctx, &bot.SendMessageParams{
 			ChatID: q.chatID,
 			Text:   err.Error(),

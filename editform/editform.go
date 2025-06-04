@@ -208,12 +208,12 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 			key := strings.TrimPrefix(command, "edit_")
 
 			q := questionaire.NewBuilder(mes.Message.Chat.ID, f.manager).
-				SetOnDoneHandler(func(ctx context.Context, b *bot.Bot, chatID any, answersByte []byte) error {
+				SetOnDoneHandler(func(ctx context.Context, b *bot.Bot, chatID any, req map[string]interface{}) error {
 
-					var req map[string]interface{}
-					if err := json.Unmarshal(answersByte, &req); err != nil {
-						return err
-					}
+					// var req map[string]interface{}
+					// if err := json.Unmarshal(answersByte, &req); err != nil {
+					// 	return err
+					// }
 
 					fmt.Println("[EditForm.editCallback] received answers:", req)
 
