@@ -75,6 +75,9 @@ type DataResult struct {
 	PagesCount  int64
 }
 
+/*
+NewDataResult creates a DataResult with the provided text, reply markup, and pages count.
+*/
 func NewDataResult(text string, replyMarkup [][]button.Button, pagesCount int64) DataResult {
 	return DataResult{
 		Text:        text,
@@ -83,6 +86,9 @@ func NewDataResult(text string, replyMarkup [][]button.Button, pagesCount int64)
 	}
 }
 
+/*
+NewErrorDataResult creates a DataResult representing an error, with the error message as text.
+*/
 func NewErrorDataResult(err error) DataResult {
 	return DataResult{
 		Text: err.Error(),
@@ -98,6 +104,9 @@ func NewErrorDataResult(err error) DataResult {
 
 type dataHandlerFunc func(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filter map[string]interface{}) DataResult
 
+/*
+New creates and initializes a new DataTable with the given bot, items per page, data handler, questionaire manager, and filter keys.
+*/
 func New(
 	b *bot.Bot,
 	itemPerPage int,
@@ -149,7 +158,9 @@ func New(
 	return p
 }
 
-// Prefix returns the prefix of the widget
+/*
+Prefix returns the prefix of the DataTable widget.
+*/
 func (d *DataTable) Prefix() string {
 	return d.prefix
 }
@@ -403,7 +414,9 @@ func (d *DataTable) invokeDataHandler(ctx context.Context, b *bot.Bot, pageSize,
 	d.pagesCount = dataResult.PagesCount
 }
 
-// show the database using the filterInput(bytes), struct must have pageSize and pageNum
+/*
+Show displays the DataTable using the provided filter input. The filter input must include pageSize and pageNum.
+*/
 func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, filterInput map[string]interface{}) (*models.Message, error) {
 	fmt.Println("[datatable] show page , filter:", filterInput)
 	d.saveFilter(filterInput)

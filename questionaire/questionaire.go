@@ -40,6 +40,9 @@ type Questionaire struct {
 	manager     *Manager
 }
 
+/*
+GetAnswers returns a map of question keys to their answers or selected choices.
+*/
 func (q *Questionaire) GetAnswers() map[string]interface{} {
 	answers := make(map[string]interface{})
 	for _, question := range q.questions {
@@ -59,6 +62,9 @@ func (q *Questionaire) GetAnswers() map[string]interface{} {
 	return answers
 }
 
+/*
+SetInitialData sets the initial data for the questionnaire and returns the updated instance.
+*/
 func (q *Questionaire) SetInitialData(data map[string]interface{}) *Questionaire {
 	q.InitialData = data
 	return q
@@ -74,14 +80,76 @@ type Question struct {
 	QuestionFormat  QuestionFormat
 }
 
+/*
+SetAnswer sets the answer for the question.
+*/
 func (q *Question) SetAnswer(answer string) {
 	q.Answer = answer
 }
 
+/*
+AddChoiceSelected appends a selected choice to the ChoicesSelected slice.
+*/
 func (q *Question) AddChoiceSelected(answer string) {
 	q.ChoicesSelected = append(q.ChoicesSelected, answer)
 }
 
+func (q *Question) IsSelected(choice string) bool {
+	for _, selectedChoice := range q.ChoicesSelected {
+		if selectedChoice == choice {
+			return true
+		}
+	}
+	return false
+}
+
+func (q *Question) GetSelectedChoices() [][]button.Button {
+	selected := make([][]button.Button, 0)
+
+	for _, row := range q.Choices {
+		newRow := make([]button.Button, 0)
+		for _, choice := range row {
+			if q.IsSelected(choice.CallbackData) {
+				newRow = append(newRow, choice)
+			}
+		}
+		if len(newRow) > 0 {
+			selected = append(selected, newRow)
+		}
+	}
+
+	return selected
+}
+
+func (q *Question) GetUnselectedChoices() [][]button.Button {
+	unselected := make([][]button.Button, 0)
+
+	for _, row := range q.Choices {
+		newRow := make([]button.Button, 0)
+		for _, choice := range row {
+			selected := false
+			for _, selectedChoice := range q.ChoicesSelected {
+				if selectedChoice == choice.CallbackData {
+					selected = true
+					break
+				}
+			}
+			if !selected {
+				newRow = append(newRow, choice)
+			}
+		}
+		if len(newRow) > 0 {
+			unselected = append(unselected, newRow)
+		}
+	}
+
+	return unselected
+
+}
+
+/*
+Validate runs the validator function for the question, if set.
+*/
 func (q *Question) Validate(answer string) error {
 	if q.validator != nil {
 		return q.validator(answer)
@@ -89,7 +157,9 @@ func (q *Question) Validate(answer string) error {
 	return nil
 }
 
-// NewBuilder creates a new Questionaire instance with an optional manager
+/*
+NewBuilder creates a new Questionaire instance with an optional manager.
+*/
 func NewBuilder(chatID any, manager *Manager) *Questionaire {
 	fmt.Println("new question builder:", chatID)
 	return &Questionaire{
@@ -103,18 +173,25 @@ func NewBuilder(chatID any, manager *Manager) *Questionaire {
 	}
 }
 
-// SetManager sets or updates the manager for this questionnaire
+/*
+SetManager sets or updates the manager for this questionnaire and returns the updated instance.
+*/
 func (q *Questionaire) SetManager(m *Manager) *Questionaire {
 	q.manager = m
 	return q
 }
 
+/*
+SetContext sets the context for the questionnaire and returns the updated instance.
+*/
 func (q *Questionaire) SetContext(ctx context.Context) *Questionaire {
 	q.ctx = ctx
 	return q
 }
 
-// creates a question that expects array of answer
+/*
+AddMultipleAnswerQuestion adds a question that expects multiple answers (checkbox style) to the questionnaire.
+*/
 func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choices [][]button.Button, validateFunc func(answer string) error) *Questionaire {
 	question := &Question{
 		Key:             key,
@@ -134,7 +211,9 @@ func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choice
 	return q
 }
 
-// creatte a question that expects a text answer
+/*
+AddQuestion adds a question that expects a single answer (text or radio style) to the questionnaire.
+*/
 func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.Button, validateFunc func(answer string) error) *Questionaire {
 	question := &Question{
 		Key:             key,
@@ -208,13 +287,17 @@ func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.B
 // 	}
 // }
 
-// will be called once all questions have been asked
+/*
+SetOnDoneHandler sets the handler to be called when all questions have been answered.
+*/
 func (q *Questionaire) SetOnDoneHandler(handler onDoneHandlerFunc) *Questionaire {
 	q.onDoneHandler = handler
 	return q
 }
 
-// Called when all questions have been asked, will pass answer struct marshalled to json bytes
+/*
+Done is called when all questions have been answered. It marshals the answers to JSON and calls the onDoneHandler.
+*/
 func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 	if q.ctx != nil {
@@ -249,7 +332,9 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 
 }
 
-// Ask starts the questionnaire, registering with manager if available
+/*
+Ask starts the questionnaire, sending the current question to the user and registering with the manager if available.
+*/
 func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
 	curQuestion := q.questions[q.currentQuestionIndex]
 	fmt.Println("[question] -> ", q.callbackID, "asking question about:", curQuestion, "choices:", q.questions[q.currentQuestionIndex].Choices)
@@ -267,12 +352,25 @@ func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
 	if len(curQuestion.Choices) > 0 && curQuestion.QuestionFormat != QuestionFormatText {
 		inlineKB := inline.New(b, inline.WithPrefix(q.callbackID))
 
-		for _, choiceRow := range q.questions[q.currentQuestionIndex].Choices {
+		// Add selected choices
+		for _, choiceRow := range curQuestion.GetSelectedChoices() {
+			inlineKB.Row()
+			for _, i := range choiceRow {
+				inlineKB.Button(
+					"✅ "+helper.EscapeTelegramReserved(i.Text),
+					[]byte(i.CallbackData),
+					q.onInlineKeyboardUnSelect,
+				)
+			}
+		}
+
+		// Add unselected choices
+		for _, choiceRow := range q.questions[q.currentQuestionIndex].GetUnselectedChoices() {
 			inlineKB.Row()
 
 			for _, i := range choiceRow {
 				inlineKB.Button(
-					helper.EscapeTelegramReserved(i.Text),
+					"☑️ "+helper.EscapeTelegramReserved(i.Text),
 					[]byte(i.CallbackData),
 					q.onInlineKeyboardSelect,
 				)
@@ -330,6 +428,28 @@ func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, m
 
 }
 
+func (q *Questionaire) onInlineKeyboardUnSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+
+	curQuestion := q.questions[q.currentQuestionIndex]
+	fmt.Println("unselecting choice:", string(data), "for question:", curQuestion.Key)
+
+	if curQuestion.QuestionFormat == QuestionFormatCheck {
+		for i, selectedChoice := range curQuestion.ChoicesSelected {
+			if selectedChoice == string(data) {
+				curQuestion.ChoicesSelected = append(curQuestion.ChoicesSelected[:i], curQuestion.ChoicesSelected[i+1:]...)
+				break
+			}
+		}
+	}
+
+	q.Ask(ctx, b, q.chatID)
+
+}
+
+/*
+Answer processes the user's answer for the current question and advances the questionnaire if appropriate.
+Returns true if all questions have been answered.
+*/
 func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 	fmt.Println("answer:", answer)
 	curQuestion := q.questions[q.currentQuestionIndex]
@@ -400,6 +520,9 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 // 	return nil
 // }
 
+/*
+GetResultByte marshals the answers of the questionnaire to JSON bytes.
+*/
 func GetResultByte(q *Questionaire) ([]byte, error) {
 
 	data, err := json.Marshal(q.GetAnswers())
