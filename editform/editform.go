@@ -69,6 +69,10 @@ func New(
 	prefix := "ef" + bot.RandomString(14)
 	fmt.Println("new editform", prefix)
 
+	if choices == nil {
+		choices = make(map[string][][]button.Button)
+	}
+
 	f := EditForm{
 		prefix:            prefix,
 		data:              make(map[string]interface{}),
@@ -258,6 +262,16 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 }
 
 func (f *EditForm) Show(ctx context.Context) (*models.Message, error) {
+
+	if f.manager == nil {
+		return nil, fmt.Errorf("questionaire manager is not set")
+	}
+	if f.botInstance == nil {
+		return nil, fmt.Errorf("bot instance is not set")
+	}
+	if f.chatID == nil {
+		return nil, fmt.Errorf("chatID is not set")
+	}
 
 	f.rebuildControls()
 

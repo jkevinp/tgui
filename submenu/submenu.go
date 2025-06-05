@@ -21,7 +21,7 @@ type SubMenuItem struct {
 	SubMenuOnSelect inline.OnSelect
 }
 
-// type SubMenuOnSelect func(ctx context.Context, b *bot.Bot, update *models.Update, data []byte)
+// NewSubMenuItem creates a new SubMenuItem with the provided text, callback data, and selection function.
 
 func NewSubMenuItem(text string, callbackData string, fun inline.OnSelect) *SubMenuItem {
 	return &SubMenuItem{
@@ -31,6 +31,8 @@ func NewSubMenuItem(text string, callbackData string, fun inline.OnSelect) *SubM
 	}
 }
 
+// NewSubMenu creates a new SubMenu with the provided text and items.
+// Each item is a slice of SubMenuItem pointers, allowing for multiple rows of buttons.
 func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
 	m := &SubMenu{
 		Text: text,
@@ -50,7 +52,38 @@ func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
 	m.Kb = inlineKB
 
 	return m
+}
 
+func NewBuilder(b *bot.Bot, text string) *SubMenu {
+	return &SubMenu{
+		Text: text,
+		Kb:   inline.New(b, inline.WithPrefix("inline")),
+	}
+}
+
+// Row starts a new row in the SubMenu's inline keyboard.
+// This allows you to add buttons in a new row after the previous buttons.
+func (m *SubMenu) Row() *SubMenu {
+	m.Kb.Row()
+	return m
+}
+
+// Add adds a button to the current row of the SubMenu.
+func (m *SubMenu) Add(text string, callbackData string, fun inline.OnSelect) *SubMenu {
+	m.Kb.Button(text, []byte(callbackData), fun)
+	return m
+}
+
+// Add SubMenuItem adds a SubMenuItem to the current row of the SubMenu.
+func (m *SubMenu) AddSubMenuItem(item *SubMenuItem) *SubMenu {
+	m.Kb.Button(item.Text, []byte(item.CallbackData), item.SubMenuOnSelect)
+	return m
+}
+
+// AddCancel adds a cancel button to the current row of the SubMenu.
+func (m *SubMenu) AddCancel() *SubMenu {
+	m.Kb.Row().Button("❌", []byte("cancel"), onCancel)
+	return m
 }
 
 func onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
