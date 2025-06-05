@@ -89,10 +89,16 @@ func (m *Menu) Row() *Menu {
 	return m
 }
 func (m *Menu) Add(text string, handler bot.HandlerFunc) *Menu {
-	if handler != nil {
-		m.botInstance.RegisterHandler(bot.HandlerTypeMessageText, text, bot.MatchTypeExact, handler)
-	}
 
 	m.Kb.Button(text, m.botInstance, bot.MatchTypeExact, handler)
+
+	if handler != nil {
+		m.botInstance.RegisterHandler(
+			bot.HandlerTypeMessageText,
+			text,
+			bot.MatchTypeExact,
+			handler,
+		)
+	}
 	return m
 }
