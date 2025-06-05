@@ -10,9 +10,10 @@ import (
 )
 
 type SubMenu struct {
-	Kb    *inline.Keyboard
-	Text  string
-	MsgID any
+	Kb     *inline.Keyboard
+	Text   string
+	MsgID  any
+	Prefix string
 }
 
 type SubMenuItem struct {
@@ -35,10 +36,11 @@ func NewSubMenuItem(text string, callbackData string, fun inline.OnSelect) *SubM
 // Each item is a slice of SubMenuItem pointers, allowing for multiple rows of buttons.
 func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
 	m := &SubMenu{
-		Text: text,
+		Text:   text,
+		Prefix: "sb" + bot.RandomString(14),
 	}
 
-	inlineKB := inline.New(b, inline.WithPrefix("inline"))
+	inlineKB := inline.New(b, inline.WithPrefix(m.Prefix))
 
 	for _, item := range items {
 		inlineKB.Row()
@@ -55,9 +57,13 @@ func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
 }
 
 func NewBuilder(b *bot.Bot, text string) *SubMenu {
+
+	prefix := "sb" + bot.RandomString(14)
+
 	return &SubMenu{
-		Text: text,
-		Kb:   inline.New(b, inline.WithPrefix("inline")),
+		Text:   text,
+		Kb:     inline.New(b, inline.WithPrefix(prefix)),
+		Prefix: prefix,
 	}
 }
 

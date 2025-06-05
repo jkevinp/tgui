@@ -46,6 +46,8 @@ type EditForm struct {
 	stringTransformer map[string]func(string) (string, error) //transform input string to string
 
 	chatID any
+
+	onCancelHandler func()
 }
 
 type OnDoneEditHandler func(map[string]interface{}) error
@@ -56,6 +58,10 @@ func (f *EditForm) SetFormatter(key string, formatFunc func(string) (string, err
 	return f
 }
 
+func (f *EditForm) SetOnCancelHandler(handler func()) *EditForm {
+	f.onCancelHandler = handler
+	return f
+}
 func New(
 	b *bot.Bot, //bot instance
 	text string, // edit form text
@@ -206,6 +212,12 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 				Text:   err.Error(),
 			})
 		}
+	case "cancel":
+		fmt.Println("[EditForm.editCallback] cancel")
+		if f.onCancelHandler != nil {
+			f.onCancelHandler()
+		}
+
 	default:
 		if strings.HasPrefix(command, "edit_") {
 			fmt.Println("[EditForm.editCallback] edit", command)
