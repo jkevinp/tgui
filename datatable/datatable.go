@@ -44,7 +44,6 @@ type DataTable struct {
 	CtrlFilter button.Button
 
 	filterKeys    []string
-	filterMenu    Filter
 	currentFilter map[string]interface{}
 	filterButtons [][]button.Button
 
@@ -125,7 +124,6 @@ func New(
 		CtrlFilter:          button.Button{Text: FILTER, CallbackData: "filter"},
 		questionaireManager: manager,
 		filterKeys:          filterKeys,
-		filterMenu:          NewFilter(filterKeys),
 		currentFilter:       make(map[string]interface{}),
 		b:                   b,
 	}
