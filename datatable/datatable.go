@@ -98,8 +98,7 @@ func NewErrorDataResult(err error) DataResult {
 	}
 }
 
-// set the struct used to filter the datatable
-
+// dataHandlerFunc is a function that handles data retrieval based on the provided context, bot, page size, page number, and filter.
 type dataHandlerFunc func(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filter map[string]interface{}) DataResult
 
 /*
