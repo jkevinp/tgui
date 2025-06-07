@@ -19,12 +19,15 @@ type OnErrorHandler func(err error)
 
 const (
 	FILTER    = "🔎 Filter"
-	NEXT      = "⏭️ Next"
-	BACK      = "⏮️ Back"
+	NEXT      = "➡️"
+	BACK      = "⬅️"
 	CLOSE     = "❌ Close"
 	NODATA    = "No data"
 	FILTER_BY = "Filter by"
 	CANCEL    = "⬅️ Cancel"
+
+	LASTPAGE  = "%d ⏭️"
+	FIRSTPAGE = "%d ⏮️ "
 )
 
 type DataTable struct {
@@ -189,7 +192,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 	case "next":
 		fmt.Println("[datatable.nagivateCallback] next page")
 		d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(int64) + 1
-		d.Show(ctx, b, d.chatID, d.getFilterBytes())
+		d.Show(ctx, b, d.chatID, d.currentFilter)
 	case "back":
 		fmt.Println("[datatable.nagivateCallback] back page, current page:", d.currentFilter["pageNum"].(int64))
 		// && int64(d.currentFilter["pageNum"].(int64)) <= d.pagesCount
@@ -197,7 +200,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 
 			d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(int64) - 1
 			fmt.Println("[datatable.nagivateCallback] back page", d.currentFilter["pageNum"].(int64))
-			d.Show(ctx, b, d.chatID, d.getFilterBytes())
+			d.Show(ctx, b, d.chatID, d.currentFilter)
 		}
 
 	case "filter":
@@ -224,8 +227,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 		}
 
 		_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: d.chatID,
-			// MessageID:   d.msgID.(int),
+			ChatID:      d.chatID,
 			Text:        FILTER_BY,
 			ParseMode:   models.ParseModeMarkdown,
 			ReplyMarkup: filterNode,
@@ -240,48 +242,30 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 	case "close":
 		fmt.Println("[datatable.nagivateCallback] close")
 	case "filter_cancel":
-		d.Show(ctx, b, d.chatID, d.getFilterBytes())
+		d.Show(ctx, b, d.chatID, d.currentFilter)
 	default:
 
 		fmt.Println("[datatable.nagivateCallback] data:", command)
 		if strings.HasPrefix(command, "filter_") {
 
-			filterKey := strings.TrimPrefix(command, "filter_")
-			//get input from user for the value of filter key
+			filterKey := strings.TrimPrefix(command, "filter_") //get input from user for the value of filter key
 
 			mapKeysChoice := make(map[string][]string)
 			mapKeysChoice[filterKey] = nil
 
-			q := questionaire.NewBuilder(d.chatID, d.questionaireManager).
-				AddQuestion(
-					filterKey,
-					"Enter value for "+filterKey,
-					nil,
-					nil,
-				)
-
 			fun := func(ctx context.Context, b *bot.Bot, chatID any, result map[string]interface{}) error {
-
+				// reset current page on filter change
 				d.currentFilter["pageNum"] = int64(1)
-
-				// var temp map[string]string
-				// json.Unmarshal(result, &temp)
-
-				// fmt.Println("parsing", temp, string(result))
-
-				// d.updateFilter(filterKey, temp[filterKey])
-
 				d.updateFilter(filterKey, result[filterKey])
-
 				fmt.Println("[datatable]filter conversation:", d.currentFilter, d.msgID)
-
-				_, err := d.Show(ctx, b, chatID, d.getFilterBytes())
-
+				_, err := d.Show(ctx, b, chatID, d.currentFilter)
 				return err
 			}
-			q.SetOnDoneHandler(fun)
 
-			q.Ask(ctx, b, d.chatID.(int64))
+			questionaire.NewBuilder(d.chatID, d.questionaireManager).
+				AddQuestion(filterKey, "Enter value for "+filterKey, nil, nil).
+				SetOnDoneHandler(fun).
+				Ask(ctx, b, d.chatID.(int64))
 
 			return
 		} else if strings.HasPrefix(command, "setpage_") {
@@ -297,13 +281,13 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 			d.currentFilter["pageNum"] = int64(pageInt)
 
 			fmt.Println("[datatable.nagivateCallback] set page", d.currentFilter["pageNum"].(int64))
-			d.Show(ctx, b, d.chatID, d.getFilterBytes())
+			d.Show(ctx, b, d.chatID, d.currentFilter)
 
 		} else if strings.HasPrefix(command, "remove_filter_") {
 			fmt.Println("[datatable.nagivateCallback] remove filter")
 			filterKey := strings.TrimPrefix(command, "remove_filter_")
 			d.currentFilter[filterKey] = nil
-			d.Show(ctx, b, d.chatID, d.getFilterBytes())
+			d.Show(ctx, b, d.chatID, d.currentFilter)
 		}
 	}
 
@@ -313,7 +297,6 @@ func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 	fmt.Println("[datatable] rebuild controls")
 
 	currentPage := int64(d.currentFilter["pageNum"].(int64))
-
 	navigateNode := inline.New(d.b, inline.WithPrefix(d.prefix))
 
 	if d.replyMarkup != nil {
@@ -322,34 +305,39 @@ func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 			navigateNode.Row()
 			for _, btn := range row {
 				navigateNode.Button(btn.Text, []byte(d.prefix+btn.CallbackData), func(ctx context.Context, bot *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-
 					trimmed := strings.TrimPrefix(string(data), d.prefix)
-
 					fmt.Println("[datatable] callback data:", string(data), "trimmed:", trimmed)
-
 					btn.OnClick(ctx, bot, mes, []byte(trimmed))
-
 				})
 			}
 		}
 	}
 
 	navigateNode.Row()
-	if currentPage > 1 {
-		navigateNode.Button(d.CtrlBack.Text, []byte(d.prefix+d.CtrlBack.CallbackData), d.nagivateCallback)
-	}
 
 	if d.pagesCount > 1 {
 		startPage := d.calcStartPage()
 
-		for i := startPage; i < startPage+5; i++ {
+		// Show page 1 button if it's not in current navigation range
+		if startPage > 1 {
+			text := fmt.Sprintf(FIRSTPAGE, 1)
+			callbackCommand := fmt.Sprintf("%ssetpage_1", d.prefix)
+			navigateNode.Button(
+				text,
+				[]byte(callbackCommand),
+				d.nagivateCallback,
+			)
+		}
 
+		if currentPage > 1 {
+			navigateNode.Button(d.CtrlBack.Text, []byte(d.prefix+d.CtrlBack.CallbackData), d.nagivateCallback)
+		}
+
+		// Show pagination buttons
+		for i := startPage; i < startPage+5 && i <= d.pagesCount; i++ {
 			text := fmt.Sprintf("%d", i)
 			callbackCommand := fmt.Sprintf("%ssetpage_%d", d.prefix, i)
 
-			if i > d.pagesCount {
-				break
-			}
 			if i == currentPage {
 				text = "( " + text + " )"
 			}
@@ -360,16 +348,34 @@ func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 				d.nagivateCallback,
 			)
 		}
+
+		if currentPage < d.pagesCount {
+			navigateNode.Button(d.CtrlNext.Text, []byte(d.prefix+d.CtrlNext.CallbackData), d.nagivateCallback)
+
+			// Show last page button if it's not in current navigation range
+			lastVisible := startPage + 5 - 1
+			if lastVisible < d.pagesCount {
+				text := fmt.Sprintf(LASTPAGE, d.pagesCount)
+				callbackCommand := fmt.Sprintf("%ssetpage_%d", d.prefix, d.pagesCount)
+				navigateNode.Button(
+					text,
+					[]byte(callbackCommand),
+					d.nagivateCallback,
+				)
+			}
+		}
 	}
 
-	if currentPage < d.pagesCount {
-		navigateNode.Button(d.CtrlNext.Text, []byte(d.prefix+d.CtrlNext.CallbackData), d.nagivateCallback)
-	}
-
+	// show filter button if there are filter keys
 	if len(d.filterKeys) > 0 {
-		navigateNode.Row().Button(d.CtrlFilter.Text, []byte(d.prefix+d.CtrlFilter.CallbackData), d.nagivateCallback)
+		navigateNode.Row().Button(
+			d.CtrlFilter.Text,
+			[]byte(d.prefix+d.CtrlFilter.CallbackData),
+			d.nagivateCallback,
+		)
 	}
 
+	// show current filters and allow to remove them
 	if len(d.currentFilter) > 0 {
 
 		for key, value := range d.currentFilter {
@@ -386,7 +392,12 @@ func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 		}
 	}
 
-	navigateNode.Row().Button(d.CtrlClose.Text, []byte(d.prefix+d.CtrlClose.CallbackData), d.nagivateCallback)
+	// show close button
+	navigateNode.Row().Button(
+		d.CtrlClose.Text,
+		[]byte(d.prefix+d.CtrlClose.CallbackData),
+		d.nagivateCallback,
+	)
 
 	params := &bot.SendMessageParams{
 		ChatID:      chatID,
@@ -423,7 +434,7 @@ func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, filterInpu
 		b,
 		int(d.currentFilter["pageSize"].(int64)),
 		int(d.currentFilter["pageNum"].(int64)),
-		d.getFilterBytes(),
+		d.currentFilter,
 	)
 	params := d.rebuildControls(chatID)
 	m, err := b.SendMessage(ctx, params)
@@ -480,10 +491,4 @@ func (d *DataTable) saveFilter(filterInput map[string]interface{}) {
 }
 func (d *DataTable) updateFilter(key string, value interface{}) {
 	d.currentFilter[key] = value
-}
-
-func (d *DataTable) getFilterBytes() map[string]interface{} {
-	// filterBytes, _ := json.Marshal(d.currentFilter)
-	// return filterBytes
-	return d.currentFilter
 }
