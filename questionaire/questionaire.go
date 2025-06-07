@@ -9,12 +9,13 @@ import (
 	"github.com/jkevinp/tgui/button"
 	"github.com/jkevinp/tgui/helper"
 	"github.com/jkevinp/tgui/keyboard/inline"
+	"github.com/jkevinp/tgui/uibot"
 
 	"github.com/go-telegram/bot"
 	"github.com/sentimensrg/ctx/mergectx"
 )
 
-type onDoneHandlerFunc func(ctx context.Context, b *bot.Bot, chatID any, answers map[string]interface{}) error
+type onDoneHandlerFunc func(ctx *uibot.Context, answers map[string]interface{}) error
 
 type QuestionFormat int
 
@@ -304,10 +305,10 @@ func (q *Questionaire) SetOnCancelHandler(handler func()) *Questionaire {
 /*
 Done is called when all questions have been answered. It marshals the answers to JSON and calls the onDoneHandler.
 */
-func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (q *Questionaire) Done(ctx *uibot.Context) {
 
 	if q.ctx != nil {
-		ctx = mergectx.Join(ctx, q.ctx)
+		ctx.Context = mergectx.Join(ctx.Context, q.ctx)
 	}
 
 	resultByte, err := GetResultByte(q)
@@ -327,12 +328,15 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 		fmt.Println("[Questionaire] error unmarshalling result:", err)
 	}
 
-	if err := q.onDoneHandler(ctx, b, q.chatID, result); err != nil {
+	if err := q.onDoneHandler(ctx, result); err != nil {
 		fmt.Println("[Questionaire] error calling onDoneHandler:", err)
-		b.SendMessage(ctx, &bot.SendMessageParams{
-			ChatID: q.chatID,
-			Text:   err.Error(),
+
+		ctx.BotInstance.SendMessage(ctx, &bot.SendMessageParams{
+			ChatID:    q.chatID,
+			Text:      "❌ Error processing questionnaire: " + err.Error(),
+			ParseMode: models.ParseModeMarkdown,
 		})
+
 		return
 	}
 
@@ -341,7 +345,7 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 		MessageIDs: q.msgIds,
 	}
 
-	b.DeleteMessages(ctx, &deleteParams)
+	ctx.BotInstance.DeleteMessages(ctx, &deleteParams)
 
 	q = nil
 
@@ -350,7 +354,7 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 /*
 Show starts the questionnaire, sending the current question to the user and registering with the manager if available.
 */
-func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
+func (q *Questionaire) Show(ctx *uibot.Context) {
 	curQuestion := q.questions[q.currentQuestionIndex]
 	fmt.Println("[question] -> ", q.callbackID, "asking question about:", curQuestion, "choices:", q.questions[q.currentQuestionIndex].Choices)
 
@@ -359,12 +363,12 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 	}
 
 	params := &bot.SendMessageParams{
-		ChatID:    chatID,
+		ChatID:    ctx.ChatID,
 		Text:      "✒️" + helper.EscapeTelegramReserved(curQuestion.Text),
 		ParseMode: models.ParseModeMarkdown,
 	}
 
-	inlineKB := inline.New(b, inline.WithPrefix(q.callbackID))
+	inlineKB := inline.New(ctx.BotInstance, inline.WithPrefix(q.callbackID))
 
 	if len(curQuestion.Choices) > 0 && curQuestion.QuestionFormat != QuestionFormatText {
 
@@ -407,7 +411,7 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 
 	fmt.Println("reply markup:", params.ReplyMarkup)
 
-	m, err := b.SendMessage(ctx, params)
+	m, err := ctx.BotInstance.SendMessage(ctx, params)
 
 	if err == nil {
 		q.msgIds = append(q.msgIds, m.ID)
@@ -417,22 +421,22 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 
 }
 
-func (q *Questionaire) onDoneChoosing(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	b.DeleteMessage(ctx, &bot.DeleteMessageParams{
+func (q *Questionaire) onDoneChoosing(ctx *uibot.Context, mes models.MaybeInaccessibleMessage, data []byte) {
+	ctx.BotInstance.DeleteMessage(ctx, &bot.DeleteMessageParams{
 		ChatID:    q.chatID,
 		MessageID: mes.Message.ID,
 	})
 
 	fmt.Println("cmd_done")
 
-	if isDone := q.Answer("cmd_done", b, q.chatID); isDone {
+	if isDone := q.Answer(ctx, "cmd_done"); isDone {
 		fmt.Println("isDone:", isDone)
-		q.Done(ctx, b, nil)
+		q.Done(ctx)
 	}
 
 }
 
-func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+func (q *Questionaire) onInlineKeyboardSelect(ctx *uibot.Context, mes models.MaybeInaccessibleMessage, data []byte) {
 	// m, _ := b.SendMessage(ctx, &bot.SendMessageParams{
 	// 	ChatID: q.chatID,
 	// 	Text:   "You selected: " + string(data),
@@ -442,14 +446,14 @@ func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, m
 
 	// curQuestion := q.questions[q.currentQuestionIndex]
 
-	if isDone := q.Answer(string(data), b, q.chatID); isDone {
+	if isDone := q.Answer(ctx, string(data)); isDone {
 		fmt.Println("isDone:", isDone)
-		q.Done(ctx, b, nil)
+		q.Done(ctx)
 	}
 
 }
 
-func (q *Questionaire) onInlineKeyboardUnSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+func (q *Questionaire) onInlineKeyboardUnSelect(ctx *uibot.Context, mes models.MaybeInaccessibleMessage, data []byte) {
 
 	curQuestion := q.questions[q.currentQuestionIndex]
 	fmt.Println("unselecting choice:", string(data), "for question:", curQuestion.Key)
@@ -463,17 +467,19 @@ func (q *Questionaire) onInlineKeyboardUnSelect(ctx context.Context, b *bot.Bot,
 		}
 	}
 
-	q.Show(ctx, b, q.chatID)
+	q.Show(ctx)
 
 }
 
-func (q *Questionaire) onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+func (q *Questionaire) onCancel(ctx *uibot.Context, mes models.MaybeInaccessibleMessage, data []byte) {
 	if q.onCancelHandler != nil {
 		deleteParams := bot.DeleteMessagesParams{
 			ChatID:     q.chatID,
 			MessageIDs: q.msgIds,
 		}
-		b.DeleteMessages(ctx, &deleteParams)
+
+		ctx.BotInstance.DeleteMessages(ctx, &deleteParams)
+
 		q.onCancelHandler()
 	}
 }
@@ -482,7 +488,7 @@ func (q *Questionaire) onCancel(ctx context.Context, b *bot.Bot, mes models.Mayb
 Answer processes the user's answer for the current question and advances the questionnaire if appropriate.
 Returns true if all questions have been answered.
 */
-func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
+func (q *Questionaire) Answer(ctx *uibot.Context, answer string) bool {
 	fmt.Println("answer:", answer)
 	curQuestion := q.questions[q.currentQuestionIndex]
 
@@ -491,13 +497,13 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 	} else if curQuestion.QuestionFormat == QuestionFormatCheck && answer != "cmd_done" {
 		if err := curQuestion.Validate(answer); err != nil {
 
-			b.SendMessage(context.Background(), &bot.SendMessageParams{
-				ChatID:    chatID,
+			ctx.BotInstance.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:    ctx.ChatID,
 				Text:      err.Error(),
 				ParseMode: models.ParseModeMarkdown,
 			})
 
-			q.Show(context.Background(), b, chatID)
+			q.Show(ctx)
 
 			return false
 		}
@@ -506,13 +512,13 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 	} else {
 		if err := curQuestion.Validate(answer); err != nil {
 
-			b.SendMessage(context.Background(), &bot.SendMessageParams{
-				ChatID:    chatID,
+			ctx.BotInstance.SendMessage(ctx, &bot.SendMessageParams{
+				ChatID:    ctx.ChatID,
 				Text:      err.Error(),
 				ParseMode: models.ParseModeMarkdown,
 			})
 
-			q.Show(context.Background(), b, chatID)
+			q.Show(ctx)
 
 			return false
 		}
@@ -533,7 +539,7 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 	// }
 
 	if q.currentQuestionIndex < len(q.questions) {
-		q.Show(context.Background(), b, chatID)
+		q.Show(ctx)
 	}
 
 	return q.currentQuestionIndex >= len(q.questions)

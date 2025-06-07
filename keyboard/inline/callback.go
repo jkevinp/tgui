@@ -1,17 +1,17 @@
 package inline
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/jkevinp/tgui/uibot"
 )
 
-func (kb *Keyboard) callbackAnswer(ctx context.Context, b *bot.Bot, callbackQuery *models.CallbackQuery) {
-	ok, err := b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
+func (kb *Keyboard) callbackAnswer(ctx *uibot.Context, callbackQuery *models.CallbackQuery) {
+	ok, err := ctx.BotInstance.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{
 		CallbackQueryID: callbackQuery.ID,
 	})
 	if err != nil {
@@ -23,8 +23,10 @@ func (kb *Keyboard) callbackAnswer(ctx context.Context, b *bot.Bot, callbackQuer
 	}
 }
 
-func (kb *Keyboard) callback(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (kb *Keyboard) callback(ctx *uibot.Context, update *models.Update) {
 	if kb.deleteAfterClick {
+
+		b := ctx.BotInstance
 		b.UnregisterHandler(kb.callbackHandlerID)
 
 		_, errDelete := b.DeleteMessage(ctx, &bot.DeleteMessageParams{
@@ -39,19 +41,19 @@ func (kb *Keyboard) callback(ctx context.Context, b *bot.Bot, update *models.Upd
 	btnNum, errBtnNum := strconv.Atoi(strings.TrimPrefix(update.CallbackQuery.Data, kb.prefix))
 	if errBtnNum != nil {
 		kb.onError(fmt.Errorf("wrong callback data btnNum, %s", update.CallbackQuery.Data))
-		kb.callbackAnswer(ctx, b, update.CallbackQuery)
+		kb.callbackAnswer(ctx, update.CallbackQuery)
 		return
 	}
 
 	if len(kb.handlers) <= btnNum {
 		kb.onError(fmt.Errorf("wrong callback data, %s", update.CallbackQuery.Data))
-		kb.callbackAnswer(ctx, b, update.CallbackQuery)
+		kb.callbackAnswer(ctx, update.CallbackQuery)
 		return
 	}
 
 	if kb.handlers[btnNum].Handler != nil {
-		kb.handlers[btnNum].Handler(ctx, b, update.CallbackQuery.Message, kb.handlers[btnNum].data)
+		kb.handlers[btnNum].Handler(ctx, update.CallbackQuery.Message, kb.handlers[btnNum].data)
 	}
 
-	kb.callbackAnswer(ctx, b, update.CallbackQuery)
+	kb.callbackAnswer(ctx, update.CallbackQuery)
 }

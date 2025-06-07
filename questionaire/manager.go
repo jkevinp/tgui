@@ -1,12 +1,12 @@
 package questionaire
 
 import (
-	"context"
 	"fmt"
 	"sync"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/jkevinp/tgui/uibot"
 )
 
 // Manager handles thread-safe operations for questionnaire conversations
@@ -52,7 +52,7 @@ func (m *Manager) Exists(chatID int64) bool {
 }
 
 // HandleMessage processes incoming messages for active questionnaire conversations
-func (m *Manager) HandleMessage(ctx context.Context, b *bot.Bot, update *models.Update) {
+func (m *Manager) HandleMessage(ctx *uibot.Context, b *bot.Bot, update *models.Update) {
 	if update.Message == nil {
 		return
 	}
@@ -67,7 +67,7 @@ func (m *Manager) HandleMessage(ctx context.Context, b *bot.Bot, update *models.
 	fmt.Printf("[questionaire manager] ChatID: %v, Message: %v, Active conversations: %d\n",
 		chatID, update.Message.Text, len(m.conversations))
 
-	if isDone := q.Answer(update.Message.Text, b, chatID); isDone {
+	if isDone := q.Answer(ctx, update.Message.Text); isDone {
 		result, err := GetResultByte(q)
 		if err != nil {
 			fmt.Println("[questionaire manager] error getting result:", err)
@@ -75,7 +75,7 @@ func (m *Manager) HandleMessage(ctx context.Context, b *bot.Bot, update *models.
 		}
 		fmt.Println("[questionaire manager] result of questionaire:", string(result))
 
-		q.Done(ctx, b, update)
+		q.Done(ctx)
 
 		q.manager.Remove(chatID)
 

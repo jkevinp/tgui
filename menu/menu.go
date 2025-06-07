@@ -1,9 +1,9 @@
 package menu
 
 import (
-	"context"
-
 	"github.com/jkevinp/tgui/keyboard/reply"
+
+	"github.com/jkevinp/tgui/uibot"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -12,7 +12,7 @@ import (
 type Menu struct {
 	Kb          *reply.ReplyKeyboard
 	Text        string
-	botInstance *bot.Bot
+	botInstance *uibot.UIBot
 }
 
 // OnMenuItemSelect defines a function type for handling menu item selection.
@@ -30,7 +30,7 @@ func NewMenuItem(text string) *MenuItem {
 	}
 }
 
-func NewMenu(b *bot.Bot, text string, items ...[]*MenuItem) *Menu {
+func NewMenu(b *uibot.UIBot, text string, items ...[]*MenuItem) *Menu {
 	m := &Menu{
 		Text:        text,
 		botInstance: b,
@@ -46,7 +46,7 @@ func NewMenu(b *bot.Bot, text string, items ...[]*MenuItem) *Menu {
 	for _, item := range items {
 		demoReplyKeyboard.Row()
 		for _, i := range item {
-			demoReplyKeyboard.Button(i.Text, b, bot.MatchTypeExact, nil)
+			demoReplyKeyboard.Button(i.Text, b.Bot, bot.MatchTypeExact, nil)
 		}
 	}
 
@@ -56,25 +56,25 @@ func NewMenu(b *bot.Bot, text string, items ...[]*MenuItem) *Menu {
 
 }
 
-func (m *Menu) Show(ctx context.Context, b *bot.Bot, chatID any) (*models.Message, error) {
-	return b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      chatID,
+func (m *Menu) Show(ctx *uibot.Context, chatID any) (*models.Message, error) {
+	return ctx.BotInstance.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      ctx.ChatID,
 		Text:        m.Text,
 		ReplyMarkup: m.Kb,
 	})
 }
 
 // func onReplyKeyboardSelect(ctx context.Context, b *bot.Bot, update *models.Update) {
-// 	b.SendMessage(ctx, &bot.SendMessageParams{
-// 		ChatID: update.Message.Chat.ID,
-// 		Text:   "You selected: " + string(update.Message.Text),
-// 	})
+// b.SendMessage(ctx, &bot.SendMessageParams{
+// 	ChatID: update.Message.Chat.ID,
+// 	Text:   "You selected: " + string(update.Message.Text),
+// })
 // }
 
-func NewBuilder(b *bot.Bot, text string) *Menu {
+func NewBuilder(uibot *uibot.UIBot, text string) *Menu {
 	return &Menu{
 		Text:        text,
-		botInstance: b,
+		botInstance: uibot,
 		Kb: reply.New(
 			reply.WithPrefix("menu"),
 			reply.IsSelective(),
@@ -90,7 +90,7 @@ func (m *Menu) Row() *Menu {
 }
 func (m *Menu) Add(text string, handler bot.HandlerFunc) *Menu {
 
-	m.Kb.Button(text, m.botInstance, bot.MatchTypeExact, handler)
+	m.Kb.Button(text, m.botInstance.Bot, bot.MatchTypeExact, handler)
 
 	if handler != nil {
 		m.botInstance.RegisterHandler(
@@ -98,6 +98,7 @@ func (m *Menu) Add(text string, handler bot.HandlerFunc) *Menu {
 			text,
 			bot.MatchTypeExact,
 			handler,
+			m.botInstance.Middlewares...,
 		)
 	}
 	return m

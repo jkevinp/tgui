@@ -10,6 +10,7 @@ import (
 	"github.com/jkevinp/tgui/button"
 	"github.com/jkevinp/tgui/keyboard/inline"
 	"github.com/jkevinp/tgui/questionaire"
+	"github.com/jkevinp/tgui/uibot"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -53,7 +54,6 @@ type DataTable struct {
 	msgID  any
 	chatID any
 
-	b          *bot.Bot
 	pagesCount int64
 }
 
@@ -102,13 +102,13 @@ func NewErrorDataResult(err error) DataResult {
 }
 
 // dataHandlerFunc is a function that handles data retrieval based on the provided context, bot, page size, page number, and filter.
-type dataHandlerFunc func(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filter map[string]interface{}) DataResult
+type dataHandlerFunc func(ctx *uibot.Context, pageSize, pageNum int, filter map[string]interface{}) DataResult
 
 /*
 New creates and initializes a new DataTable with the given bot, items per page, data handler, questionaire manager, and filter keys.
 */
 func New(
-	b *bot.Bot,
+	b *uibot.UIBot,
 	itemPerPage int,
 	dataHandlerFunc dataHandlerFunc,
 	manager *questionaire.Manager,
@@ -127,7 +127,6 @@ func New(
 		questionaireManager: manager,
 		filterKeys:          filterKeys,
 		currentFilter:       make(map[string]interface{}),
-		b:                   b,
 	}
 
 	p.currentFilter["pageSize"] = int64(itemPerPage)
@@ -182,7 +181,7 @@ func (p *DataTable) callbackAnswer(ctx context.Context, b *bot.Bot, callbackQuer
 	}
 }
 
-func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, callbackData []byte) {
+func (d *DataTable) nagivateCallback(ctx *uibot.Context, mes models.MaybeInaccessibleMessage, callbackData []byte) {
 
 	fmt.Println("[datatable.nagivateCallback] ", d.prefix, "->", string(callbackData))
 
@@ -192,15 +191,17 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 	case "next":
 		fmt.Println("[datatable.nagivateCallback] next page")
 		d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(int64) + 1
-		d.Show(ctx, b, d.chatID, d.currentFilter)
+		ctx.Data["pageNum"] = d.currentFilter["pageNum"].(int64)
+		d.Show(ctx)
 	case "back":
 		fmt.Println("[datatable.nagivateCallback] back page, current page:", d.currentFilter["pageNum"].(int64))
 		// && int64(d.currentFilter["pageNum"].(int64)) <= d.pagesCount
 		if d.currentFilter["pageNum"].(int64) > 1 {
 
 			d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(int64) - 1
+			ctx.Data["pageNum"] = d.currentFilter["pageNum"].(int64)
 			fmt.Println("[datatable.nagivateCallback] back page", d.currentFilter["pageNum"].(int64))
-			d.Show(ctx, b, d.chatID, d.currentFilter)
+			d.Show(ctx)
 		}
 
 	case "filter":
@@ -409,7 +410,7 @@ func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 	return params
 }
 
-func (d *DataTable) invokeDataHandler(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filter map[string]interface{}) {
+func (d *DataTable) invokeDataHandler(ctx *uibot.UIBot, pageSize, pageNum int, filter map[string]interface{}) {
 
 	dataResult := d.dataHandler(ctx, b, pageSize, pageNum, filter)
 	fmt.Println("[datatable InvokeDataHandler] filter:", filter, "result:", dataResult)
@@ -426,17 +427,18 @@ func (d *DataTable) invokeDataHandler(ctx context.Context, b *bot.Bot, pageSize,
 /*
 Show displays the DataTable using the provided filter input. The filter input must include pageSize and pageNum.
 */
-func (d *DataTable) Show(ctx context.Context, b *bot.Bot, chatID any, filterInput map[string]interface{}) (*models.Message, error) {
+func (d *DataTable) Show(ctx *uibot.Context) (*models.Message, error) {
+	filterInput := ctx.Data
 	fmt.Println("[datatable] show page , filter:", filterInput)
 	d.saveFilter(filterInput)
 	d.invokeDataHandler(
 		ctx,
-		b,
+		ctx.Bot,
 		int(d.currentFilter["pageSize"].(int64)),
 		int(d.currentFilter["pageNum"].(int64)),
 		d.currentFilter,
 	)
-	params := d.rebuildControls(chatID)
+	params := d.rebuildControls(ctx.ChatID)
 	m, err := b.SendMessage(ctx, params)
 	d.msgID = m.ID
 	d.chatID = m.Chat.ID

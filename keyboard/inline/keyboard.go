@@ -1,15 +1,15 @@
 package inline
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/jkevinp/tgui/uibot"
 )
 
-type OnSelect func(ctx context.Context, bot *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte)
+type OnSelect func(ctx *uibot.Context, mes models.MaybeInaccessibleMessage, data []byte)
 type OnErrorHandler func(err error)
 
 type handlerData struct {
@@ -29,7 +29,7 @@ type Keyboard struct {
 	markup            [][]models.InlineKeyboardButton
 }
 
-func New(b *bot.Bot, opts ...Option) *Keyboard {
+func New(b *uibot.UIBot, opts ...Option) *Keyboard {
 	kb := &Keyboard{
 		prefix:           bot.RandomString(16),
 		markup:           [][]models.InlineKeyboardButton{{}},
@@ -42,7 +42,12 @@ func New(b *bot.Bot, opts ...Option) *Keyboard {
 		opt(kb)
 	}
 
-	kb.callbackHandlerID = b.RegisterHandler(bot.HandlerTypeCallbackQueryData, kb.prefix, bot.MatchTypePrefix, kb.callback)
+	kb.callbackHandlerID = b.RegisterHanderWithMiddlewares(
+		bot.HandlerTypeCallbackQueryData,
+		kb.prefix,
+		bot.MatchTypePrefix,
+		kb.callback,
+	)
 
 	return kb
 }

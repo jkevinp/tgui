@@ -10,9 +10,11 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/jkevinp/tgui/button"
+	tguicontext "github.com/jkevinp/tgui/context"
 	"github.com/jkevinp/tgui/keyboard/inline"
 	"github.com/jkevinp/tgui/parser"
 	"github.com/jkevinp/tgui/questionaire"
+	"github.com/jkevinp/tgui/uibot"
 )
 
 const (
@@ -28,7 +30,7 @@ type EditForm struct {
 
 	data map[string]interface{}
 
-	botInstance *bot.Bot
+	botInstance *uibot.UIBot
 
 	OnDoneEditHandler OnDoneEditHandler
 
@@ -63,7 +65,7 @@ func (f *EditForm) SetOnCancelHandler(handler func()) *EditForm {
 	return f
 }
 func New(
-	b *bot.Bot, //bot instance
+	b *uibot.UIBot, //bot instance
 	text string, // edit form text
 	targetStruct any, //struct to edit
 	onDoneEdit OnDoneEditHandler, // onDoneEdit function
@@ -167,10 +169,12 @@ func (f *EditForm) rebuildControls() {
 			value, err = f.stringFormatter[key](fmt.Sprintf("%v", value))
 
 			if err != nil {
+
 				f.botInstance.SendMessage(context.Background(), &bot.SendMessageParams{
 					ChatID: f.chatID,
-					Text:   err.Error(),
+					Text:   fmt.Sprintf("Error formatting value for key %s: %v", key, err),
 				})
+
 				return
 			}
 
@@ -273,7 +277,7 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 	}
 }
 
-func (f *EditForm) Show(ctx context.Context) (*models.Message, error) {
+func (f *EditForm) Show(ctx tguicontext.TGUIContext) (*models.Message, error) {
 
 	if f.manager == nil {
 		return nil, fmt.Errorf("questionaire manager is not set")
@@ -295,7 +299,7 @@ func (f *EditForm) Show(ctx context.Context) (*models.Message, error) {
 			filterNode.Button(btn.Text, []byte(btn.CallbackData), btn.OnClick)
 		}
 	}
-	return f.botInstance.SendMessage(ctx, &bot.SendMessageParams{
+	return ctx.BotInstance.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      f.chatID,
 		Text:        f.text,
 		ReplyMarkup: filterNode,

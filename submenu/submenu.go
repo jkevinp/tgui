@@ -1,9 +1,8 @@
 package submenu
 
 import (
-	"context"
-
 	"github.com/jkevinp/tgui/keyboard/inline"
+	"github.com/jkevinp/tgui/uibot"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -34,7 +33,7 @@ func NewSubMenuItem(text string, callbackData string, fun inline.OnSelect) *SubM
 
 // NewSubMenu creates a new SubMenu with the provided text and items.
 // Each item is a slice of SubMenuItem pointers, allowing for multiple rows of buttons.
-func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
+func NewSubMenu(b *uibot.UIBot, text string, items ...[]*SubMenuItem) *SubMenu {
 	m := &SubMenu{
 		Text:   text,
 		Prefix: "sb" + bot.RandomString(14),
@@ -56,7 +55,7 @@ func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
 	return m
 }
 
-func NewBuilder(b *bot.Bot, text string) *SubMenu {
+func NewBuilder(b *uibot.UIBot, text string) *SubMenu {
 
 	prefix := "sb" + bot.RandomString(14)
 
@@ -92,16 +91,16 @@ func (m *SubMenu) AddCancel() *SubMenu {
 	return m
 }
 
-func onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	b.DeleteMessage(ctx, &bot.DeleteMessageParams{
+func onCancel(ctx *uibot.Context, mes models.MaybeInaccessibleMessage, data []byte) {
+	ctx.BotInstance.DeleteMessage(ctx, &bot.DeleteMessageParams{
 		ChatID:    mes.Message.Chat.ID,
 		MessageID: mes.Message.ID,
 	})
 }
 
-func (m *SubMenu) Show(ctx context.Context, b *bot.Bot, chatID any) (*models.Message, error) {
-	msg, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      chatID,
+func (m *SubMenu) Show(ctx *uibot.Context) (*models.Message, error) {
+	msg, err := ctx.BotInstance.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      ctx.ChatID,
 		Text:        m.Text,
 		ReplyMarkup: m.Kb,
 	})
