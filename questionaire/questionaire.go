@@ -28,6 +28,7 @@ type Questionaire struct {
 	questions            []*Question
 	currentQuestionIndex int
 	onDoneHandler        onDoneHandlerFunc
+	onCancelHandler      func()
 
 	callbackID string
 	msgIds     []int
@@ -295,6 +296,11 @@ func (q *Questionaire) SetOnDoneHandler(handler onDoneHandlerFunc) *Questionaire
 	return q
 }
 
+func (q *Questionaire) SetOnCancelHandler(handler func()) *Questionaire {
+	q.onCancelHandler = handler
+	return q
+}
+
 /*
 Done is called when all questions have been answered. It marshals the answers to JSON and calls the onDoneHandler.
 */
@@ -342,9 +348,9 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 }
 
 /*
-Ask starts the questionnaire, sending the current question to the user and registering with the manager if available.
+Show starts the questionnaire, sending the current question to the user and registering with the manager if available.
 */
-func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
+func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 	curQuestion := q.questions[q.currentQuestionIndex]
 	fmt.Println("[question] -> ", q.callbackID, "asking question about:", curQuestion, "choices:", q.questions[q.currentQuestionIndex].Choices)
 
@@ -358,8 +364,9 @@ func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
 		ParseMode: models.ParseModeMarkdown,
 	}
 
+	inlineKB := inline.New(b, inline.WithPrefix(q.callbackID))
+
 	if len(curQuestion.Choices) > 0 && curQuestion.QuestionFormat != QuestionFormatText {
-		inlineKB := inline.New(b, inline.WithPrefix(q.callbackID))
 
 		// Add selected choices
 		for _, choiceRow := range curQuestion.GetSelectedChoices() {
@@ -390,8 +397,13 @@ func (q *Questionaire) Ask(ctx context.Context, b *bot.Bot, chatID any) {
 			inlineKB.Row().Button("✅", []byte("cmd_done"), q.onDoneChoosing)
 		}
 
-		params.ReplyMarkup = inlineKB
 	}
+
+	if q.onCancelHandler != nil {
+		inlineKB.Row().Button("❌ Cancel", []byte("cmd_cancel"), q.onCancel)
+	}
+
+	params.ReplyMarkup = inlineKB
 
 	fmt.Println("reply markup:", params.ReplyMarkup)
 
@@ -451,8 +463,19 @@ func (q *Questionaire) onInlineKeyboardUnSelect(ctx context.Context, b *bot.Bot,
 		}
 	}
 
-	q.Ask(ctx, b, q.chatID)
+	q.Show(ctx, b, q.chatID)
 
+}
+
+func (q *Questionaire) onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+	if q.onCancelHandler != nil {
+		deleteParams := bot.DeleteMessagesParams{
+			ChatID:     q.chatID,
+			MessageIDs: q.msgIds,
+		}
+		b.DeleteMessages(ctx, &deleteParams)
+		q.onCancelHandler()
+	}
 }
 
 /*
@@ -474,7 +497,7 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 				ParseMode: models.ParseModeMarkdown,
 			})
 
-			q.Ask(context.Background(), b, chatID)
+			q.Show(context.Background(), b, chatID)
 
 			return false
 		}
@@ -489,7 +512,7 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 				ParseMode: models.ParseModeMarkdown,
 			})
 
-			q.Ask(context.Background(), b, chatID)
+			q.Show(context.Background(), b, chatID)
 
 			return false
 		}
@@ -510,7 +533,7 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 	// }
 
 	if q.currentQuestionIndex < len(q.questions) {
-		q.Ask(context.Background(), b, chatID)
+		q.Show(context.Background(), b, chatID)
 	}
 
 	return q.currentQuestionIndex >= len(q.questions)

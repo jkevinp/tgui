@@ -267,7 +267,7 @@ func (f *EditForm) editCallback(ctx context.Context, b *bot.Bot, mes models.Mayb
 				q.AddQuestion(key, "Enter new value for: "+key, nil, nil)
 			}
 
-			q.Ask(ctx, b, mes.Message.Chat.ID)
+			q.Show(ctx, b, mes.Message.Chat.ID)
 
 		}
 	}

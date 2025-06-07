@@ -265,7 +265,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 			questionaire.NewBuilder(d.chatID, d.questionaireManager).
 				AddQuestion(filterKey, "Enter value for "+filterKey, nil, nil).
 				SetOnDoneHandler(fun).
-				Ask(ctx, b, d.chatID.(int64))
+				Show(ctx, b, d.chatID.(int64))
 
 			return
 		} else if strings.HasPrefix(command, "setpage_") {
