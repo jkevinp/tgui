@@ -39,7 +39,8 @@ type DataTable struct {
 	questionaireManager *questionaire.Manager
 
 	// callbackHandlerID string
-	dataHandler dataHandlerFunc
+	dataHandler     dataHandlerFunc
+	onCancelHandler func()
 
 	CtrlBack   button.Button
 	CtrlNext   button.Button
@@ -103,6 +104,11 @@ func NewErrorDataResult(err error) DataResult {
 
 // dataHandlerFunc is a function that handles data retrieval based on the provided context, bot, page size, page number, and filter.
 type dataHandlerFunc func(ctx context.Context, b *bot.Bot, pageSize, pageNum int, filter map[string]interface{}) DataResult
+
+func (d *DataTable) SetOnCancelHandler(handler func()) *DataTable {
+	d.onCancelHandler = handler
+	return d
+}
 
 /*
 New creates and initializes a new DataTable with the given bot, items per page, data handler, questionaire manager, and filter keys.
@@ -189,6 +195,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 	command := strings.TrimPrefix(string(callbackData), d.prefix)
 
 	switch command {
+
 	case "next":
 		fmt.Println("[datatable.nagivateCallback] next page")
 		d.currentFilter["pageNum"] = d.currentFilter["pageNum"].(int64) + 1
@@ -241,6 +248,10 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 		return
 	case "close":
 		fmt.Println("[datatable.nagivateCallback] close")
+		if d.onCancelHandler != nil {
+			fmt.Println("[datatable.nagivateCallback] calling onCancelHandler")
+			d.onCancelHandler()
+		}
 	case "filter_cancel":
 		d.Show(ctx, b, d.chatID, d.currentFilter)
 	default:

@@ -92,13 +92,13 @@ func (m *Menu) Add(text string, handler bot.HandlerFunc) *Menu {
 
 	m.Kb.Button(text, m.botInstance, bot.MatchTypeExact, handler)
 
-	if handler != nil {
-		m.botInstance.RegisterHandler(
-			bot.HandlerTypeMessageText,
-			text,
-			bot.MatchTypeExact,
-			handler,
-		)
-	}
+	// if handler != nil {
+	// 	m.botInstance.RegisterHandler(
+	// 		bot.HandlerTypeMessageText,
+	// 		text,
+	// 		bot.MatchTypeExact,
+	// 		handler,
+	// 	)
+	// }
 	return m
 }

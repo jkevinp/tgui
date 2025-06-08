@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/go-telegram/bot/models"
 	"github.com/jkevinp/tgui/button"
@@ -79,6 +80,12 @@ type Question struct {
 	Answer          string
 	validator       func(answer string) error
 	QuestionFormat  QuestionFormat
+
+	MsgID int // Message ID of the question message, if applicable
+}
+
+func (q *Question) SetMsgID(msgID int) {
+	q.MsgID = msgID
 }
 
 /*
@@ -347,12 +354,16 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 
 }
 
+const (
+	QUESTION_FORMAT = "✒️[%d/%d] %s"
+)
+
 /*
 Show starts the questionnaire, sending the current question to the user and registering with the manager if available.
 */
 func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 	curQuestion := q.questions[q.currentQuestionIndex]
-	fmt.Println("[question] -> ", q.callbackID, "asking question about:", curQuestion, "choices:", q.questions[q.currentQuestionIndex].Choices)
+	fmt.Println("[question] -> ", q.callbackID, "->", curQuestion)
 
 	if q.manager != nil && q.chatID != nil {
 		q.manager.Add(q.chatID.(int64), q)
@@ -360,11 +371,13 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 
 	params := &bot.SendMessageParams{
 		ChatID:    chatID,
-		Text:      "✒️" + helper.EscapeTelegramReserved(curQuestion.Text),
+		Text:      fmt.Sprintf(QUESTION_FORMAT, q.currentQuestionIndex+1, len(q.questions), helper.EscapeTelegramReserved(curQuestion.Text)),
 		ParseMode: models.ParseModeMarkdown,
 	}
 
-	inlineKB := inline.New(b, inline.WithPrefix(q.callbackID))
+	inlineKB := inline.New(b, inline.WithPrefix(
+		fmt.Sprintf("qs_%s_step%d", q.callbackID, q.currentQuestionIndex),
+	))
 
 	if len(curQuestion.Choices) > 0 && curQuestion.QuestionFormat != QuestionFormatText {
 
@@ -383,7 +396,6 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 		// Add unselected choices
 		for _, choiceRow := range q.questions[q.currentQuestionIndex].GetUnselectedChoices() {
 			inlineKB.Row()
-
 			for _, i := range choiceRow {
 				inlineKB.Button(
 					"☑️ "+helper.EscapeTelegramReserved(i.Text),
@@ -394,13 +406,21 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 
 		}
 		if curQuestion.QuestionFormat == QuestionFormatCheck {
-			inlineKB.Row().Button("✅", []byte("cmd_done"), q.onDoneChoosing)
+			inlineKB.Row().Button("✅ Done", []byte("cmd_done"), q.onDoneChoosing)
 		}
 
 	}
 
+	// if q.currentQuestionIndex > 0 && q.currentQuestionIndex < len(q.questions) {
+	// 	inlineKB.Row().Button("◀️ Back", []byte("cmd_back"), q.onBack)
+	// }
+
 	if q.onCancelHandler != nil {
-		inlineKB.Row().Button("❌ Cancel", []byte("cmd_cancel"), q.onCancel)
+		if curQuestion.QuestionFormat != QuestionFormatCheck &&
+			curQuestion.QuestionFormat != QuestionFormatRadio {
+			inlineKB.Row()
+		}
+		inlineKB.Button("❌ Cancel", []byte("cmd_cancel"), q.onCancel)
 	}
 
 	params.ReplyMarkup = inlineKB
@@ -410,11 +430,51 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 	m, err := b.SendMessage(ctx, params)
 
 	if err == nil {
+
+		curQuestion.SetMsgID(m.ID)
+
+		// Edit previous messages to update the question text and clear the keyboard
+		fmt.Println("current question index:", q.currentQuestionIndex)
+
+		if q.currentQuestionIndex > 0 {
+			if prevQuestion := q.questions[q.currentQuestionIndex-1]; prevQuestion != nil {
+				fmt.Println("editing previous question message:", prevQuestion.MsgID, "with text:", prevQuestion.Text)
+				if prevQuestion.MsgID != 0 {
+					inlineKB := inline.New(b, inline.WithPrefix(
+						fmt.Sprintf("qs_%s_step_edit_%d", q.callbackID, q.currentQuestionIndex-1),
+					)).Button(helper.EscapeTelegramReserved(fmt.Sprintf("◀️ %s", prevQuestion.Answer)), []byte(fmt.Sprintf("%d", q.currentQuestionIndex-1)), q.onBack)
+
+					m, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+						ChatID:      q.chatID,
+						MessageID:   prevQuestion.MsgID,
+						Text:        helper.EscapeTelegramReserved(fmt.Sprintf(QUESTION_FORMAT, q.currentQuestionIndex, len(q.questions), prevQuestion.Text)),
+						ParseMode:   models.ParseModeMarkdown,
+						ReplyMarkup: inlineKB, // Clear previous keyboard
+					})
+
+					if err != nil {
+						fmt.Println("error editing previous question message:", err)
+					}
+					prevQuestion.SetMsgID(m.ID)
+				}
+
+			}
+		}
+
 		q.msgIds = append(q.msgIds, m.ID)
 	} else {
 		fmt.Println("error sending message:", err)
 	}
 
+}
+
+func (q *Questionaire) GetQuestionIndex(question *Question) int {
+	for i, q := range q.questions {
+		if q.Key == question.Key {
+			return i
+		}
+	}
+	return -1
 }
 
 func (q *Questionaire) onDoneChoosing(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
@@ -432,13 +492,50 @@ func (q *Questionaire) onDoneChoosing(ctx context.Context, b *bot.Bot, mes model
 
 }
 
-func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	// m, _ := b.SendMessage(ctx, &bot.SendMessageParams{
-	// 	ChatID: q.chatID,
-	// 	Text:   "You selected: " + string(data),
-	// })
+func (q *Questionaire) onBack(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+	b.DeleteMessage(ctx, &bot.DeleteMessageParams{
+		ChatID:    q.chatID,
+		MessageID: mes.Message.ID,
+	})
 
-	// q.msgIds = append(q.msgIds, m.ID)
+	fmt.Println("onBack")
+
+	stepStr := string(data)
+
+	step, err := strconv.Atoi(stepStr)
+	if err != nil {
+		fmt.Println("error converting step to int:", err)
+		return
+	}
+
+	if step < 0 || step >= len(q.questions) {
+		fmt.Println("step out of range:", step, "len(questions):", len(q.questions))
+		return
+	}
+
+	for questionIndex, questions := range q.questions {
+		if questionIndex > step {
+			b.DeleteMessage(ctx, &bot.DeleteMessageParams{
+				ChatID:    q.chatID,
+				MessageID: questions.MsgID,
+			})
+			questions.Answer = ""
+		}
+	}
+
+	q.currentQuestionIndex = step
+
+	q.Show(ctx, b, q.chatID)
+
+}
+
+func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+	m, _ := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID: q.chatID,
+		Text:   "You selected: " + string(data),
+	})
+
+	q.msgIds = append(q.msgIds, m.ID)
 
 	// curQuestion := q.questions[q.currentQuestionIndex]
 

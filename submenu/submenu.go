@@ -10,10 +10,11 @@ import (
 )
 
 type SubMenu struct {
-	Kb     *inline.Keyboard
-	Text   string
-	MsgID  any
-	Prefix string
+	Kb              *inline.Keyboard
+	Text            string
+	MsgID           any
+	Prefix          string
+	OnCancelHandler func()
 }
 
 type SubMenuItem struct {
@@ -34,27 +35,27 @@ func NewSubMenuItem(text string, callbackData string, fun inline.OnSelect) *SubM
 
 // NewSubMenu creates a new SubMenu with the provided text and items.
 // Each item is a slice of SubMenuItem pointers, allowing for multiple rows of buttons.
-func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
-	m := &SubMenu{
-		Text:   text,
-		Prefix: "sb" + bot.RandomString(14),
-	}
+// func NewSubMenu(b *bot.Bot, text string, items ...[]*SubMenuItem) *SubMenu {
+// 	m := &SubMenu{
+// 		Text:   text,
+// 		Prefix: "sb" + bot.RandomString(14),
+// 	}
 
-	inlineKB := inline.New(b, inline.WithPrefix(m.Prefix))
+// 	inlineKB := inline.New(b, inline.WithPrefix(m.Prefix))
 
-	for _, item := range items {
-		inlineKB.Row()
-		for _, i := range item {
-			inlineKB.Button(i.Text, []byte(i.CallbackData), i.SubMenuOnSelect)
-		}
-	}
+// 	for _, item := range items {
+// 		inlineKB.Row()
+// 		for _, i := range item {
+// 			inlineKB.Button(i.Text, []byte(i.CallbackData), i.SubMenuOnSelect)
+// 		}
+// 	}
 
-	inlineKB.Row().Button("❌", []byte("cancel"), onCancel)
+// 	inlineKB.Row().Button("❌", []byte("cancel"), m.onCancel)
 
-	m.Kb = inlineKB
+// 	m.Kb = inlineKB
 
-	return m
-}
+// 	return m
+// }
 
 func NewBuilder(b *bot.Bot, text string) *SubMenu {
 
@@ -87,16 +88,22 @@ func (m *SubMenu) AddSubMenuItem(item *SubMenuItem) *SubMenu {
 }
 
 // AddCancel adds a cancel button to the current row of the SubMenu.
-func (m *SubMenu) AddCancel() *SubMenu {
-	m.Kb.Row().Button("❌", []byte("cancel"), onCancel)
+func (m *SubMenu) AddCancel(cancelFunc func()) *SubMenu {
+	m.OnCancelHandler = cancelFunc
+	m.Kb.Row().Button("❌", []byte("cancel"), m.onCancel)
 	return m
 }
 
-func onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
+func (m *SubMenu) onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
 	b.DeleteMessage(ctx, &bot.DeleteMessageParams{
 		ChatID:    mes.Message.Chat.ID,
 		MessageID: mes.Message.ID,
 	})
+
+	if m.OnCancelHandler != nil {
+		m.OnCancelHandler()
+	}
+
 }
 
 func (m *SubMenu) Show(ctx context.Context, b *bot.Bot, chatID any) (*models.Message, error) {
