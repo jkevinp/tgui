@@ -25,6 +25,17 @@ const (
 	QuestionFormatCheck QuestionFormat = 2
 )
 
+// UI constants for better maintainability
+const (
+	RadioUnselected  = "⚪"
+	RadioSelected    = "🔘"
+	CheckUnselected  = "☑️"
+	CheckSelected    = "✅"
+	EditButtonText   = "◀️ Edit"
+	DoneButtonText   = "✅ Done"
+	CancelButtonText = "❌ Cancel"
+)
+
 type Questionaire struct {
 	questions            []*Question
 	currentQuestionIndex int
@@ -86,6 +97,128 @@ type Question struct {
 
 func (q *Question) SetMsgID(msgID int) {
 	q.MsgID = msgID
+}
+
+/*
+GetDisplayAnswer returns a user-friendly display string for the question's answer.
+*/
+/*
+sendAnswerSummary adds an edit button to the completed question.
+For text questions: edits the existing message to add edit button
+For radio/checkbox questions: sends a new summary message (since original was deleted)
+*/
+func (q *Questionaire) sendAnswerSummary(ctx context.Context, b *bot.Bot, questionIndex int) {
+	if questionIndex < 0 || questionIndex >= len(q.questions) {
+		return
+	}
+
+	question := q.questions[questionIndex]
+	if question == nil {
+		return
+	}
+
+	displayAnswer := question.GetDisplayAnswer()
+	editKB := inline.New(b, inline.WithPrefix(
+		fmt.Sprintf("qs_%s_answer_%d", q.callbackID, questionIndex),
+	)).Button(helper.EscapeTelegramReserved(EditButtonText), []byte(fmt.Sprintf("%d", questionIndex)), q.onBack)
+
+	if question.QuestionFormat == QuestionFormatText && question.MsgID != 0 {
+		// For text questions, edit the existing message to add edit button
+		answerText := fmt.Sprintf("✅ *%s*\n%s",
+			helper.EscapeTelegramReserved(question.Text),
+			helper.EscapeTelegramReserved(displayAnswer))
+
+		_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+			ChatID:      q.chatID,
+			MessageID:   question.MsgID,
+			Text:        answerText,
+			ParseMode:   models.ParseModeMarkdown,
+			ReplyMarkup: editKB,
+		})
+
+		if err != nil {
+			// If edit fails, fall back to sending new message
+			q.sendNewAnswerSummary(ctx, b, question, displayAnswer, editKB)
+		}
+	} else {
+		// For radio/checkbox questions, send a new summary message
+		q.sendNewAnswerSummary(ctx, b, question, displayAnswer, editKB)
+	}
+}
+
+/*
+sendNewAnswerSummary sends a new message with answer summary and edit button.
+Used for radio/checkbox questions or as fallback when editing fails.
+*/
+func (q *Questionaire) sendNewAnswerSummary(ctx context.Context, b *bot.Bot, question *Question, displayAnswer string, editKB *inline.Keyboard) {
+	answerText := fmt.Sprintf("✅ *%s*\n%s",
+		helper.EscapeTelegramReserved(question.Text),
+		helper.EscapeTelegramReserved(displayAnswer))
+
+	answerMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:      q.chatID,
+		Text:        answerText,
+		ParseMode:   models.ParseModeMarkdown,
+		ReplyMarkup: editKB,
+	})
+
+	if err != nil {
+		// Could optionally log error here if logging system is available
+		return
+	}
+
+	q.msgIds = append(q.msgIds, answerMsg.ID)
+}
+
+func (q *Question) GetDisplayAnswer() string {
+	switch q.QuestionFormat {
+	case QuestionFormatText:
+		if q.Answer == "" {
+			return "Not answered"
+		}
+		return q.Answer
+
+	case QuestionFormatRadio:
+		if q.Answer == "" {
+			return "Not selected"
+		}
+		// Find the display text for the selected callback data
+		for _, choiceRow := range q.Choices {
+			for _, choice := range choiceRow {
+				if choice.CallbackData == q.Answer {
+					return choice.Text
+				}
+			}
+		}
+		return q.Answer // Fallback to callback data if not found
+
+	case QuestionFormatCheck:
+		if len(q.ChoicesSelected) == 0 {
+			return "None selected"
+		}
+		var displayTexts []string
+		// Convert callback data to display text
+		for _, selected := range q.ChoicesSelected {
+			for _, choiceRow := range q.Choices {
+				for _, choice := range choiceRow {
+					if choice.CallbackData == selected {
+						displayTexts = append(displayTexts, choice.Text)
+						break
+					}
+				}
+			}
+		}
+		if len(displayTexts) > 0 {
+			if len(displayTexts) == 1 {
+				return displayTexts[0]
+			}
+			return fmt.Sprintf("%s \\+ %d more", displayTexts[0], len(displayTexts)-1)
+		}
+		return "Selected items"
+
+	default:
+		return "Unknown"
+	}
 }
 
 /*
@@ -246,55 +379,6 @@ func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.B
 	return q
 }
 
-// func NewByKeys(b *bot.Bot, mapKeysChoice map[string][]string) *Questionaire {
-
-// 	keys := make([]string, len(mapKeysChoice))
-// 	i := 0
-
-// 	choices := make([][]string, len(mapKeysChoice))
-// 	for key := range mapKeysChoice {
-// 		keys[i] = key
-// 		if mapKeysChoice[key] != nil {
-// 			choices[i] = mapKeysChoice[key]
-// 		} else {
-// 			choices[i] = []string{}
-// 		}
-// 		i++
-// 	}
-
-// 	return &Questionaire{
-
-// 		currentQuestionIndex: 0,
-// 		resultFieldNames:     keys,
-// 		choices:              choices,
-// 		answersTemp:          make(map[string]string),
-// 		callbackID:           "qs" + bot.RandomString(14),
-// 	}
-// }
-
-// Asks question about each field in the struct
-// func NewByStruct(b *bot.Bot, answerStruct any) *Questionaire {
-// 	resTags, _ := parser.ParseTGTags(answerStruct)
-
-// 	fieldNames := make([]string, len(resTags))
-// 	i := 0
-// 	for key := range resTags {
-// 		// fmt.Println("key:", key)
-// 		fieldNames[i] = key
-// 		i++
-// 	}
-
-// 	fmt.Println("creating questionaire w/ field names:", fieldNames)
-
-// 	return &Questionaire{
-// 		currentQuestionIndex: 0,
-// 		resultFieldNames:     fieldNames,
-// 		answersTemp:          make(map[string]string),
-// 		resultStruct:         answerStruct,
-// 		callbackID:           "qs" + bot.RandomString(14),
-// 	}
-// }
-
 /*
 SetOnDoneHandler sets the handler to be called when all questions have been answered.
 */
@@ -349,9 +433,6 @@ func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Upda
 	}
 
 	b.DeleteMessages(ctx, &deleteParams)
-
-	q = nil
-
 }
 
 const (
@@ -379,53 +460,72 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 		fmt.Sprintf("qs_%s_step%d", q.callbackID, q.currentQuestionIndex),
 	))
 
-	if len(curQuestion.Choices) > 0 && curQuestion.QuestionFormat != QuestionFormatText {
+	// Handle different question formats with appropriate UI
+	switch curQuestion.QuestionFormat {
+	case QuestionFormatRadio:
+		// Radio buttons: simple selection without checkbox symbols
+		for _, choiceRow := range curQuestion.Choices {
+			inlineKB.Row()
+			for _, choice := range choiceRow {
+				// Check if this choice is selected
+				isSelected := curQuestion.Answer == choice.CallbackData
+				buttonText := choice.Text
+				if isSelected {
+					buttonText = RadioSelected + " " + choice.Text
+				} else {
+					buttonText = RadioUnselected + " " + choice.Text
+				}
+				inlineKB.Button(
+					helper.EscapeTelegramReserved(buttonText),
+					[]byte(choice.CallbackData),
+					q.onInlineKeyboardSelect,
+				)
+			}
+		}
 
+	case QuestionFormatCheck:
+		// Checkbox: show selected and unselected with checkbox symbols
 		// Add selected choices
 		for _, choiceRow := range curQuestion.GetSelectedChoices() {
 			inlineKB.Row()
-			for _, i := range choiceRow {
+			for _, choice := range choiceRow {
 				inlineKB.Button(
-					"✅ "+helper.EscapeTelegramReserved(i.Text),
-					[]byte(i.CallbackData),
+					CheckSelected+" "+helper.EscapeTelegramReserved(choice.Text),
+					[]byte(choice.CallbackData),
 					q.onInlineKeyboardUnSelect,
 				)
 			}
 		}
 
 		// Add unselected choices
-		for _, choiceRow := range q.questions[q.currentQuestionIndex].GetUnselectedChoices() {
+		for _, choiceRow := range curQuestion.GetUnselectedChoices() {
 			inlineKB.Row()
-			for _, i := range choiceRow {
+			for _, choice := range choiceRow {
 				inlineKB.Button(
-					"☑️ "+helper.EscapeTelegramReserved(i.Text),
-					[]byte(i.CallbackData),
+					CheckUnselected+" "+helper.EscapeTelegramReserved(choice.Text),
+					[]byte(choice.CallbackData),
 					q.onInlineKeyboardSelect,
 				)
 			}
-
-		}
-		if curQuestion.QuestionFormat == QuestionFormatCheck {
-			inlineKB.Row().Button("✅ Done", []byte("cmd_done"), q.onDoneChoosing)
 		}
 
+		// Add "Done" button for checkbox questions
+		inlineKB.Row().Button(DoneButtonText, []byte("cmd_done"), q.onDoneChoosing)
+
+	case QuestionFormatText:
+		// Text input: no buttons needed, user will type response
+		break
 	}
-
-	// if q.currentQuestionIndex > 0 && q.currentQuestionIndex < len(q.questions) {
-	// 	inlineKB.Row().Button("◀️ Back", []byte("cmd_back"), q.onBack)
-	// }
 
 	if q.onCancelHandler != nil {
 		if curQuestion.QuestionFormat != QuestionFormatCheck &&
 			curQuestion.QuestionFormat != QuestionFormatRadio {
 			inlineKB.Row()
 		}
-		inlineKB.Button("❌ Cancel", []byte("cmd_cancel"), q.onCancel)
+		inlineKB.Button(CancelButtonText, []byte("cmd_cancel"), q.onCancel)
 	}
 
 	params.ReplyMarkup = inlineKB
-
-	fmt.Println("reply markup:", params.ReplyMarkup)
 
 	m, err := b.SendMessage(ctx, params)
 
@@ -433,37 +533,10 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 
 		curQuestion.SetMsgID(m.ID)
 
-		// Edit previous messages to update the question text and clear the keyboard
-		fmt.Println("current question index:", q.currentQuestionIndex)
-
-		if q.currentQuestionIndex > 0 {
-			if prevQuestion := q.questions[q.currentQuestionIndex-1]; prevQuestion != nil {
-				fmt.Println("editing previous question message:", prevQuestion.MsgID, "with text:", prevQuestion.Text)
-				if prevQuestion.MsgID != 0 {
-					inlineKB := inline.New(b, inline.WithPrefix(
-						fmt.Sprintf("qs_%s_step_edit_%d", q.callbackID, q.currentQuestionIndex-1),
-					)).Button(helper.EscapeTelegramReserved(fmt.Sprintf("◀️ %s", prevQuestion.Answer)), []byte(fmt.Sprintf("%d", q.currentQuestionIndex-1)), q.onBack)
-
-					m, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-						ChatID:      q.chatID,
-						MessageID:   prevQuestion.MsgID,
-						Text:        helper.EscapeTelegramReserved(fmt.Sprintf(QUESTION_FORMAT, q.currentQuestionIndex, len(q.questions), prevQuestion.Text)),
-						ParseMode:   models.ParseModeMarkdown,
-						ReplyMarkup: inlineKB, // Clear previous keyboard
-					})
-
-					if err != nil {
-						fmt.Println("error editing previous question message:", err)
-					}
-					prevQuestion.SetMsgID(m.ID)
-				}
-
-			}
-		}
+		// Note: Answer summary with edit button is now handled in Answer() function
+		// when we actually proceed to the next question
 
 		q.msgIds = append(q.msgIds, m.ID)
-	} else {
-		fmt.Println("error sending message:", err)
 	}
 
 }
@@ -483,10 +556,7 @@ func (q *Questionaire) onDoneChoosing(ctx context.Context, b *bot.Bot, mes model
 		MessageID: mes.Message.ID,
 	})
 
-	fmt.Println("cmd_done")
-
 	if isDone := q.Answer("cmd_done", b, q.chatID); isDone {
-		fmt.Println("isDone:", isDone)
 		q.Done(ctx, b, nil)
 	}
 
@@ -498,28 +568,27 @@ func (q *Questionaire) onBack(ctx context.Context, b *bot.Bot, mes models.MaybeI
 		MessageID: mes.Message.ID,
 	})
 
-	fmt.Println("onBack")
-
 	stepStr := string(data)
 
 	step, err := strconv.Atoi(stepStr)
 	if err != nil {
-		fmt.Println("error converting step to int:", err)
 		return
 	}
 
 	if step < 0 || step >= len(q.questions) {
-		fmt.Println("step out of range:", step, "len(questions):", len(q.questions))
 		return
 	}
 
-	for questionIndex, questions := range q.questions {
+	for questionIndex, question := range q.questions {
 		if questionIndex > step {
 			b.DeleteMessage(ctx, &bot.DeleteMessageParams{
 				ChatID:    q.chatID,
-				MessageID: questions.MsgID,
+				MessageID: question.MsgID,
 			})
-			questions.Answer = ""
+			// Clear all answers for questions after the step we're going back to
+			question.Answer = ""
+			question.ChoicesSelected = make([]string, 0)
+			question.MsgID = 0 // Reset message ID so it gets a new one
 		}
 	}
 
@@ -530,26 +599,13 @@ func (q *Questionaire) onBack(ctx context.Context, b *bot.Bot, mes models.MaybeI
 }
 
 func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	m, _ := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: q.chatID,
-		Text:   "You selected: " + string(data),
-	})
-
-	q.msgIds = append(q.msgIds, m.ID)
-
-	// curQuestion := q.questions[q.currentQuestionIndex]
-
 	if isDone := q.Answer(string(data), b, q.chatID); isDone {
-		fmt.Println("isDone:", isDone)
 		q.Done(ctx, b, nil)
 	}
-
 }
 
 func (q *Questionaire) onInlineKeyboardUnSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-
 	curQuestion := q.questions[q.currentQuestionIndex]
-	fmt.Println("unselecting choice:", string(data), "for question:", curQuestion.Key)
 
 	if curQuestion.QuestionFormat == QuestionFormatCheck {
 		for i, selectedChoice := range curQuestion.ChoicesSelected {
@@ -580,11 +636,14 @@ Answer processes the user's answer for the current question and advances the que
 Returns true if all questions have been answered.
 */
 func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
-	fmt.Println("answer:", answer)
 	curQuestion := q.questions[q.currentQuestionIndex]
+	previousQuestionIndex := q.currentQuestionIndex
 
 	if curQuestion.QuestionFormat == QuestionFormatCheck && answer == "cmd_done" {
+		// For checkbox questions, "cmd_done" means we're advancing to next question
 		q.currentQuestionIndex++
+		// Send answer summary for the completed checkbox question
+		q.sendAnswerSummary(context.Background(), b, previousQuestionIndex)
 	} else if curQuestion.QuestionFormat == QuestionFormatCheck && answer != "cmd_done" {
 		if err := curQuestion.Validate(answer); err != nil {
 
@@ -600,6 +659,7 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 		}
 
 		curQuestion.AddChoiceSelected(answer)
+		// For checkbox selections, we don't advance yet, so no answer summary
 	} else {
 		if err := curQuestion.Validate(answer); err != nil {
 
@@ -617,17 +677,12 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 		curQuestion.SetAnswer(answer)
 
 		if curQuestion.QuestionFormat != QuestionFormatCheck {
+			// For text and radio questions, we advance immediately
 			q.currentQuestionIndex++
+			// Send answer summary for the completed question
+			q.sendAnswerSummary(context.Background(), b, previousQuestionIndex)
 		}
 	}
-
-	// if err := q.TestInput(); err != nil {
-	// 	q.answersTemp[curQuestion] = ""
-
-	// 	q.Ask(context.Background(), b, chatID)
-
-	// 	return false
-	// }
 
 	if q.currentQuestionIndex < len(q.questions) {
 		q.Show(context.Background(), b, chatID)
@@ -635,19 +690,6 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 
 	return q.currentQuestionIndex >= len(q.questions)
 }
-
-// func (q *Questionaire) TestInput() error {
-// 	data, err := json.Marshal(q.answersTemp)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	if err := json.Unmarshal(data, &q.resultStruct); err != nil {
-// 		return err
-// 	}
-
-// 	return nil
-// }
 
 /*
 GetResultByte marshals the answers of the questionnaire to JSON bytes.
