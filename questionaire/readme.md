@@ -34,6 +34,56 @@ The questionnaire includes a powerful edit feature that allows users to go back 
     *   `QuestionFormatRadio`: User selects one option from a list of buttons.
     *   `QuestionFormatCheck`: User selects one or more options from a list of buttons.
 
+## Using ButtonGrid for Choices
+
+The questionnaire now supports the powerful `ButtonGrid` builder pattern for creating clean, organized choice layouts:
+
+### Basic ButtonGrid Usage
+
+```go
+// Simple single choices (radio buttons)
+ageChoices := button.NewBuilder().
+    SingleChoiceWithData("Under 18", "age_under_18").
+    SingleChoiceWithData("18-30", "age_18_30").
+    SingleChoiceWithData("31-45", "age_31_45").
+    SingleChoiceWithData("Over 45", "age_over_45").
+    Build()
+
+// 2x2 grid layout (great for checkboxes)
+topicChoices := button.NewBuilder().
+    Row().
+    ChoiceWithData("Technology", "topic_tech").
+    ChoiceWithData("Sports", "topic_sports").
+    Row().
+    ChoiceWithData("Music", "topic_music").
+    ChoiceWithData("Travel", "topic_travel").
+    Build()
+
+// Custom layouts like rating scales
+ratingChoices := button.NewBuilder().
+    Row().
+    ChoiceWithData("⭐", "1").
+    ChoiceWithData("⭐⭐", "2").
+    ChoiceWithData("⭐⭐⭐", "3").
+    Row().
+    ChoiceWithData("⭐⭐⭐⭐", "4").
+    ChoiceWithData("⭐⭐⭐⭐⭐", "5").
+    Build()
+```
+
+### Quick Helper Functions
+
+```go
+// Simple Yes/No choices
+yesNoChoices := button.QuickChoices("Yes", "No")
+
+// Paired layout (2 per row)
+languageChoices := button.QuickPairedChoices("Go", "Python", "JavaScript", "Java")
+
+// Custom callback data
+customChoices := button.QuickChoicesWithData("Display Text", "callback_data", "Another", "another_data")
+```
+
 ## Initialization and Configuration
 
 A `Questionaire` is created using `NewBuilder`. You can then chain setter methods to configure it.

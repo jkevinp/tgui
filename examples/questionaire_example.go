@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/jkevinp/tgui/button"
+	"github.com/jkevinp/tgui/helper"
 	"github.com/jkevinp/tgui/questionaire"
 )
 
@@ -110,31 +111,49 @@ func startSurveyHandler(ctx context.Context, b *bot.Bot, update *models.Update) 
 		})
 
 	// Question 1: Text input
-	q.AddQuestion("name", "What is your name?", nil, validateNonEmpty)
+	q.AddQuestion("name", "What is your name?", nil, validateShort)
 
-	// Question 2: Radio buttons
-	ageChoices := [][]button.Button{
-		{button.Button{Text: "Under 18", CallbackData: "age_under_18"}},
-		{button.Button{Text: "18-30", CallbackData: "age_18_30"}},
-		{button.Button{Text: "31-45", CallbackData: "age_31_45"}},
-		{button.Button{Text: "Over 45", CallbackData: "age_over_45"}},
-	}
-	q.AddQuestion("age_group", "Which age group do you belong to?", ageChoices, nil) // No specific validator for choice
+	// Question 2: Radio buttons using ButtonGrid
+	ageChoices := button.NewBuilder().
+		SingleChoiceWithData("Under 18", "age_under_18").
+		SingleChoiceWithData("18-30", "age_18_30").
+		SingleChoiceWithData("31-45", "age_31_45").
+		SingleChoiceWithData("Over 45", "age_over_45").
+		Build()
+	q.AddQuestion("age_group", "Which age group do you belong to?", ageChoices, nil)
 
-	// Question 3: Checkbox
-	topicChoices := [][]button.Button{
-		{
-			button.Button{Text: "Technology", CallbackData: "topic_tech"},
-			button.Button{Text: "Sports", CallbackData: "topic_sports"},
-		},
-		{
-			button.Button{Text: "Music", CallbackData: "topic_music"},
-			button.Button{Text: "Travel", CallbackData: "topic_travel"},
-		},
-	}
+	// Question 3: Checkbox using ButtonGrid (2x2 layout)
+	topicChoices := button.NewBuilder().
+		Row().
+		ChoiceWithData("Technology", "topic_tech").
+		ChoiceWithData("Sports", "topic_sports").
+		Row().
+		ChoiceWithData("Music", "topic_music").
+		ChoiceWithData("Travel", "topic_travel").
+		Build()
 	q.AddMultipleAnswerQuestion("interests", "Which topics interest you? (Select multiple, then click Done)", topicChoices, nil)
 
-	// Question 4: Text input with number validation
+	// Question 4: Yes/No choice using QuickChoices helper
+	yesNoChoices := button.QuickChoices("Yes", "No")
+	q.AddQuestion("developer", "Are you a software developer?", yesNoChoices, nil)
+
+	// Question 5: Multiple choice with paired layout (2 per row)
+	languageChoices := button.QuickPairedChoices("Go", "Python", "JavaScript", "Java", "C++", "Rust")
+	q.AddQuestion("language", "What's your favorite programming language?", languageChoices, nil)
+
+	// Question 6: Rating scale using custom grid layout
+	ratingChoices := button.NewBuilder().
+		Row().
+		ChoiceWithData("⭐", "1").
+		ChoiceWithData("⭐⭐", "2").
+		ChoiceWithData("⭐⭐⭐", "3").
+		Row().
+		ChoiceWithData("⭐⭐⭐⭐", "4").
+		ChoiceWithData("⭐⭐⭐⭐⭐", "5").
+		Build()
+	q.AddQuestion("rating", "How would you rate this questionnaire experience?", ratingChoices, nil)
+
+	// Question 7: Text input with number validation
 	q.AddQuestion("experience_years", "How many years of experience do you have with Telegram bots?", nil, validateNumber)
 
 	// Start the questionnaire
@@ -177,12 +196,40 @@ func onSurveyDone(ctx context.Context, b *bot.Bot, chatIDany any, answers map[st
 		resultText.WriteString("\n")
 	}
 
+	if developer, ok := answers["developer"]; ok {
+		resultText.WriteString(fmt.Sprintf("💻 *Developer:* %v\n", developer))
+	}
+
+	if language, ok := answers["language"]; ok {
+		resultText.WriteString(fmt.Sprintf("🔧 *Favorite Language:* %v\n", language))
+	}
+
+	if rating, ok := answers["rating"]; ok {
+		ratingNum := rating.(string)
+		var stars string
+		switch ratingNum {
+		case "1":
+			stars = "⭐ (1 star)"
+		case "2":
+			stars = "⭐⭐ (2 stars)"
+		case "3":
+			stars = "⭐⭐⭐ (3 stars)"
+		case "4":
+			stars = "⭐⭐⭐⭐ (4 stars)"
+		case "5":
+			stars = "⭐⭐⭐⭐⭐ (5 stars)"
+		default:
+			stars = rating.(string) + " stars"
+		}
+		resultText.WriteString(fmt.Sprintf("⭐ *Rating:* %s\n", stars))
+	}
+
 	if experience, ok := answers["experience_years"]; ok {
 		years := experience.(string)
 		if years == "1" {
-			resultText.WriteString(fmt.Sprintf("💻 *Experience:* %s year\n", years))
+			resultText.WriteString(fmt.Sprintf("🎯 *Experience:* %s year\n", years))
 		} else {
-			resultText.WriteString(fmt.Sprintf("💻 *Experience:* %s years\n", years))
+			resultText.WriteString(fmt.Sprintf("🎯 *Experience:* %s years\n", years))
 		}
 	}
 
@@ -195,7 +242,7 @@ func onSurveyDone(ctx context.Context, b *bot.Bot, chatIDany any, answers map[st
 
 	m, err := b.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:    chatID,
-		Text:      resultText.String(),
+		Text:      helper.EscapeTelegramReserved(resultText.String()),
 		ParseMode: models.ParseModeMarkdown,
 	})
 
@@ -226,9 +273,9 @@ func defaultHandler(ctx context.Context, b *bot.Bot, update *models.Update) {
 }
 
 // --- Validator Functions ---
-func validateNonEmpty(answer string) error {
-	if strings.TrimSpace(answer) == "" {
-		return fmt.Errorf("Oops! This field cannot be empty. Please provide an answer.")
+func validateShort(answer string) error {
+	if strings.TrimSpace(answer) == "" || len(answer) < 3 {
+		return fmt.Errorf("Hmm, that doesn't look like a valid answer. Please try again.")
 	}
 	return nil
 }

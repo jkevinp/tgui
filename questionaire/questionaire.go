@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/go-telegram/bot/models"
-	"github.com/jkevinp/tgui/button"
+	"github.com/jkevinp/tgui/button" // ButtonGrid for organized choice layouts
 	"github.com/jkevinp/tgui/helper"
 	"github.com/jkevinp/tgui/keyboard/inline"
 
@@ -292,8 +292,12 @@ func (q *Question) GetUnselectedChoices() [][]button.Button {
 Validate runs the validator function for the question, if set.
 */
 func (q *Question) Validate(answer string) error {
+
 	if q.validator != nil {
-		return q.validator(answer)
+
+		result := q.validator(answer)
+		fmt.Println("[Question] Validating answer:", answer, "for question:", q.Key, "result:", result)
+		return result
 	}
 	return nil
 }
@@ -456,6 +460,14 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 		ParseMode: models.ParseModeMarkdown,
 	}
 
+	if ctx.Value("error") != nil {
+		// If there's an error in context, append it to the question text
+		errorMsg := ctx.Value("error").(string)
+		params.Text = fmt.Sprintf("⚠️ *%s*", helper.EscapeTelegramReserved(errorMsg)) + "\n\n" + params.Text
+		// Clear the error from context to avoid showing it again
+		ctx = context.WithValue(ctx, "error", nil)
+	}
+
 	inlineKB := inline.New(b, inline.WithPrefix(
 		fmt.Sprintf("qs_%s_step%d", q.callbackID, q.currentQuestionIndex),
 	))
@@ -518,10 +530,7 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 	}
 
 	if q.onCancelHandler != nil {
-		if curQuestion.QuestionFormat != QuestionFormatCheck &&
-			curQuestion.QuestionFormat != QuestionFormatRadio {
-			inlineKB.Row()
-		}
+		inlineKB.Row()
 		inlineKB.Button(CancelButtonText, []byte("cmd_cancel"), q.onCancel)
 	}
 
@@ -535,7 +544,6 @@ func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 
 		// Note: Answer summary with edit button is now handled in Answer() function
 		// when we actually proceed to the next question
-
 		q.msgIds = append(q.msgIds, m.ID)
 	}
 
@@ -556,7 +564,7 @@ func (q *Questionaire) onDoneChoosing(ctx context.Context, b *bot.Bot, mes model
 		MessageID: mes.Message.ID,
 	})
 
-	if isDone := q.Answer("cmd_done", b, q.chatID); isDone {
+	if isDone := q.Answer(ctx, "cmd_done", b, q.chatID); isDone {
 		q.Done(ctx, b, nil)
 	}
 
@@ -599,7 +607,7 @@ func (q *Questionaire) onBack(ctx context.Context, b *bot.Bot, mes models.MaybeI
 }
 
 func (q *Questionaire) onInlineKeyboardSelect(ctx context.Context, b *bot.Bot, mes models.MaybeInaccessibleMessage, data []byte) {
-	if isDone := q.Answer(string(data), b, q.chatID); isDone {
+	if isDone := q.Answer(ctx, string(data), b, q.chatID); isDone {
 		q.Done(ctx, b, nil)
 	}
 }
@@ -635,25 +643,22 @@ func (q *Questionaire) onCancel(ctx context.Context, b *bot.Bot, mes models.Mayb
 Answer processes the user's answer for the current question and advances the questionnaire if appropriate.
 Returns true if all questions have been answered.
 */
-func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
+func (q *Questionaire) Answer(ctx context.Context, answer string, b *bot.Bot, chatID any) bool {
 	curQuestion := q.questions[q.currentQuestionIndex]
 	previousQuestionIndex := q.currentQuestionIndex
 
 	if curQuestion.QuestionFormat == QuestionFormatCheck && answer == "cmd_done" {
+
 		// For checkbox questions, "cmd_done" means we're advancing to next question
 		q.currentQuestionIndex++
 		// Send answer summary for the completed checkbox question
-		q.sendAnswerSummary(context.Background(), b, previousQuestionIndex)
+		q.sendAnswerSummary(ctx, b, previousQuestionIndex)
 	} else if curQuestion.QuestionFormat == QuestionFormatCheck && answer != "cmd_done" {
 		if err := curQuestion.Validate(answer); err != nil {
 
-			b.SendMessage(context.Background(), &bot.SendMessageParams{
-				ChatID:    chatID,
-				Text:      err.Error(),
-				ParseMode: models.ParseModeMarkdown,
-			})
+			ctx = context.WithValue(ctx, "error", err.Error())
 
-			q.Show(context.Background(), b, chatID)
+			q.Show(ctx, b, chatID)
 
 			return false
 		}
@@ -662,15 +667,8 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 		// For checkbox selections, we don't advance yet, so no answer summary
 	} else {
 		if err := curQuestion.Validate(answer); err != nil {
-
-			b.SendMessage(context.Background(), &bot.SendMessageParams{
-				ChatID:    chatID,
-				Text:      err.Error(),
-				ParseMode: models.ParseModeMarkdown,
-			})
-
-			q.Show(context.Background(), b, chatID)
-
+			ctx = context.WithValue(ctx, "error", err.Error())
+			q.Show(ctx, b, chatID)
 			return false
 		}
 
@@ -680,12 +678,12 @@ func (q *Questionaire) Answer(answer string, b *bot.Bot, chatID any) bool {
 			// For text and radio questions, we advance immediately
 			q.currentQuestionIndex++
 			// Send answer summary for the completed question
-			q.sendAnswerSummary(context.Background(), b, previousQuestionIndex)
+			q.sendAnswerSummary(ctx, b, previousQuestionIndex)
 		}
 	}
 
 	if q.currentQuestionIndex < len(q.questions) {
-		q.Show(context.Background(), b, chatID)
+		q.Show(ctx, b, chatID)
 	}
 
 	return q.currentQuestionIndex >= len(q.questions)

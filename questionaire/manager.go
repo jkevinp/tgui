@@ -67,7 +67,7 @@ func (m *Manager) HandleMessage(ctx context.Context, b *bot.Bot, update *models.
 	fmt.Printf("[questionaire manager] ChatID: %v, Message: %v, Active conversations: %d\n",
 		chatID, update.Message.Text, len(m.conversations))
 
-	if isDone := q.Answer(update.Message.Text, b, chatID); isDone {
+	if isDone := q.Answer(ctx, update.Message.Text, b, chatID); isDone {
 		result, err := GetResultByte(q)
 		if err != nil {
 			fmt.Println("[questionaire manager] error getting result:", err)
