@@ -1,3 +1,20 @@
+// Package questionaire provides an interactive questionnaire system for Telegram bots.
+//
+// This package allows you to create multi-step questionnaires with support for text input,
+// single-choice (radio button), and multiple-choice (checkbox) questions. It includes
+// features like answer validation, edit functionality, and clean ButtonGrid layouts.
+//
+// Basic usage:
+//
+//	manager := questionaire.NewManager()
+//	q := questionaire.NewBuilder(chatID, manager).
+//		SetOnDoneHandler(handleResults).
+//		AddQuestion("name", "What's your name?", nil, validateName).
+//		AddQuestion("age", "Select age group:", ageChoices, nil)
+//	q.Show(ctx, bot, chatID)
+//
+// The package integrates with the button package for creating organized choice layouts
+// using the ButtonGrid builder pattern.
 package questionaire
 
 import (
@@ -15,55 +32,75 @@ import (
 	"github.com/sentimensrg/ctx/mergectx"
 )
 
+// onDoneHandlerFunc defines the signature for the completion handler function.
+// It is called when all questions in the questionnaire have been answered.
+// The answers map contains question keys mapped to their values.
 type onDoneHandlerFunc func(ctx context.Context, b *bot.Bot, chatID any, answers map[string]interface{}) error
 
+// QuestionFormat defines the type of input expected for a question.
 type QuestionFormat int
 
 const (
-	QuestionFormatText  QuestionFormat = 0
+	// QuestionFormatText indicates a free-text input question where users type their response.
+	QuestionFormatText QuestionFormat = 0
+	// QuestionFormatRadio indicates a single-choice question with radio button style selection.
 	QuestionFormatRadio QuestionFormat = 1
+	// QuestionFormatCheck indicates a multiple-choice question with checkbox style selection.
 	QuestionFormatCheck QuestionFormat = 2
 )
 
-// UI constants for better maintainability
+// UI constants for consistent button symbols and text across the questionnaire interface.
+// These can be customized by modifying the constants if different symbols are preferred.
 const (
-	RadioUnselected  = "⚪"
-	RadioSelected    = "🔘"
-	CheckUnselected  = "☑️"
-	CheckSelected    = "✅"
-	EditButtonText   = "◀️ Edit"
-	DoneButtonText   = "✅ Done"
+	// RadioUnselected is the symbol displayed for unselected radio button options.
+	RadioUnselected = "⚪"
+	// RadioSelected is the symbol displayed for the selected radio button option.
+	RadioSelected = "🔘"
+	// CheckUnselected is the symbol displayed for unselected checkbox options.
+	CheckUnselected = "☑️"
+	// CheckSelected is the symbol displayed for selected checkbox options.
+	CheckSelected = "✅"
+	// EditButtonText is the text displayed on edit buttons for answered questions.
+	EditButtonText = "◀️ Edit"
+	// DoneButtonText is the text displayed on the done button for checkbox questions.
+	DoneButtonText = "✅ Done"
+	// CancelButtonText is the text displayed on cancel buttons.
 	CancelButtonText = "❌ Cancel"
 )
 
+// Questionaire represents an interactive questionnaire session for a specific chat.
+// It manages a sequence of questions, tracks user progress, and handles answer collection.
+//
+// Use NewBuilder() to create a new questionnaire instance rather than constructing this struct directly.
 type Questionaire struct {
-	questions            []*Question
-	currentQuestionIndex int
-	onDoneHandler        onDoneHandlerFunc
-	onCancelHandler      func()
+	questions            []*Question       // Ordered list of questions in the questionnaire
+	currentQuestionIndex int               // Index of the currently active question
+	onDoneHandler        onDoneHandlerFunc // Function called when all questions are completed
+	onCancelHandler      func()            // Function called when questionnaire is cancelled
 
-	callbackID string
-	msgIds     []int
+	callbackID string // Unique identifier for this questionnaire's callback handlers
+	msgIds     []int  // Message IDs of sent questionnaire messages for cleanup
 
-	chatID any
+	chatID any // Telegram chat ID where this questionnaire is running
 
-	ctx context.Context
+	ctx context.Context // Context for the questionnaire session
 
+	// InitialData contains pre-filled data that will be included in final answers
 	InitialData map[string]interface{}
-	manager     *Manager
+	// manager is the Manager instance handling this questionnaire (optional)
+	manager *Manager
 }
 
-/*
-GetAnswers returns a map of question keys to their answers or selected choices.
-*/
+// GetAnswers returns a map of question keys to their answers or selected choices.
+// For text and radio questions, the value is a string.
+// For checkbox questions, the value is a slice of strings ([]string).
+// The returned map also includes any InitialData that was set on the questionnaire.
 func (q *Questionaire) GetAnswers() map[string]interface{} {
 	answers := make(map[string]interface{})
 	for _, question := range q.questions {
 		if question.QuestionFormat == QuestionFormatCheck {
-
 			answers[question.Key] = question.ChoicesSelected
 		} else {
-
 			answers[question.Key] = question.Answer
 		}
 	}
@@ -75,38 +112,45 @@ func (q *Questionaire) GetAnswers() map[string]interface{} {
 	return answers
 }
 
-/*
-SetInitialData sets the initial data for the questionnaire and returns the updated instance.
-*/
+// SetInitialData sets pre-filled data for the questionnaire and returns the updated instance.
+// This data will be included in the final answers map alongside user responses.
+// Useful for including metadata like user ID, campaign source, etc.
 func (q *Questionaire) SetInitialData(data map[string]interface{}) *Questionaire {
 	q.InitialData = data
 	return q
 }
 
+// Question represents a single question within a questionnaire.
+// It contains the question text, possible choices (for radio/checkbox questions),
+// user's answer, validation function, and formatting information.
 type Question struct {
-	Key             string
-	Text            string
-	Choices         [][]button.Button
+	// Key is the unique identifier for this question used in the answers map
+	Key string
+	// Text is the question text displayed to the user
+	Text string
+	// Choices contains the button layout for radio/checkbox questions (created with ButtonGrid)
+	Choices [][]button.Button
+	// ChoicesSelected stores selected callback data for checkbox questions
 	ChoicesSelected []string
-	Answer          string
-	validator       func(answer string) error
-	QuestionFormat  QuestionFormat
-
-	MsgID int // Message ID of the question message, if applicable
+	// Answer stores the user's response (text input or selected callback data)
+	Answer string
+	// validator is an optional function to validate user input
+	validator func(answer string) error
+	// QuestionFormat determines the type of question (text, radio, or checkbox)
+	QuestionFormat QuestionFormat
+	// MsgID stores the Telegram message ID of the question message for editing
+	MsgID int
 }
 
+// SetMsgID sets the Telegram message ID for this question.
+// This is used internally to track message IDs for editing and cleanup purposes.
 func (q *Question) SetMsgID(msgID int) {
 	q.MsgID = msgID
 }
 
-/*
-GetDisplayAnswer returns a user-friendly display string for the question's answer.
-*/
-/*
-sendAnswerSummary adds an edit button to the completed question.
-For text questions: edits the existing message to add edit button
-For radio/checkbox questions: sends a new summary message (since original was deleted)
-*/
+// sendAnswerSummary adds an edit button to the completed question.
+// For text questions: edits the existing message to add edit button
+// For radio/checkbox questions: sends a new summary message (since original was deleted)
 func (q *Questionaire) sendAnswerSummary(ctx context.Context, b *bot.Bot, questionIndex int) {
 	if questionIndex < 0 || questionIndex >= len(q.questions) {
 		return
@@ -170,6 +214,15 @@ func (q *Questionaire) sendNewAnswerSummary(ctx context.Context, b *bot.Bot, que
 	q.msgIds = append(q.msgIds, answerMsg.ID)
 }
 
+// GetDisplayAnswer returns a user-friendly display string for the question's answer.
+//
+// The returned string is suitable for display in the Telegram chat:
+//   - Text questions: Returns the user's text input or "Not answered"
+//   - Radio questions: Returns the display text of the selected button or "Not selected"
+//   - Checkbox questions: Returns the first selection plus count (e.g., "Tech + 2 more") or "None selected"
+//
+// This method converts internal callback data back to human-readable text,
+// making it perfect for edit buttons and result summaries.
 func (q *Question) GetDisplayAnswer() string {
 	switch q.QuestionFormat {
 	case QuestionFormatText:
@@ -221,9 +274,9 @@ func (q *Question) GetDisplayAnswer() string {
 	}
 }
 
-/*
-SetAnswer sets the answer for the question.
-*/
+// SetAnswer sets the answer for the question.
+// This method is used internally during answer processing.
+// For most use cases, answers are set automatically through user interaction.
 func (q *Question) SetAnswer(answer string) {
 	q.Answer = answer
 }
@@ -302,9 +355,20 @@ func (q *Question) Validate(answer string) error {
 	return nil
 }
 
-/*
-NewBuilder creates a new Questionaire instance with an optional manager.
-*/
+// NewBuilder creates a new Questionaire instance for the specified chat.
+//
+// Parameters:
+//   - chatID: The Telegram chat ID where this questionnaire will run
+//   - manager: Optional Manager instance to handle text message routing (can be nil)
+//
+// Returns a new Questionaire instance that can be configured using the builder pattern.
+//
+// Example:
+//
+//	manager := questionaire.NewManager()
+//	q := questionaire.NewBuilder(chatID, manager).
+//		SetOnDoneHandler(handleCompletion).
+//		AddQuestion("name", "What's your name?", nil, validateName)
 func NewBuilder(chatID any, manager *Manager) *Questionaire {
 	fmt.Println("new question builder:", chatID)
 	return &Questionaire{
@@ -318,25 +382,39 @@ func NewBuilder(chatID any, manager *Manager) *Questionaire {
 	}
 }
 
-/*
-SetManager sets or updates the manager for this questionnaire and returns the updated instance.
-*/
+// SetManager sets or updates the manager for this questionnaire and returns the updated instance.
+// The manager is responsible for routing text messages to active questionnaires.
+// If you're using text questions, you need a manager and must register its HandleMessage method with your bot.
 func (q *Questionaire) SetManager(m *Manager) *Questionaire {
 	q.manager = m
 	return q
 }
 
-/*
-SetContext sets the context for the questionnaire and returns the updated instance.
-*/
+// SetContext sets the context for the questionnaire and returns the updated instance.
+// This context will be merged with contexts passed to handler functions.
+// Useful for passing request-scoped data or implementing timeouts.
 func (q *Questionaire) SetContext(ctx context.Context) *Questionaire {
 	q.ctx = ctx
 	return q
 }
 
-/*
-AddMultipleAnswerQuestion adds a question that expects multiple answers (checkbox style) to the questionnaire.
-*/
+// AddMultipleAnswerQuestion adds a checkbox-style question that allows multiple selections.
+//
+// Parameters:
+//   - key: Unique identifier for this question (used in the final answers map)
+//   - text: The question text shown to the user
+//   - choices: Button layout created with ButtonGrid (e.g., button.NewBuilder().Row().Choice("Option1").Build())
+//   - validateFunc: Optional validation function (usually nil for checkbox questions)
+//
+// The user can select multiple options and click "Done" to proceed.
+// The answer will be stored as a []string in the final results.
+//
+// Example:
+//
+//	interests := button.NewBuilder().
+//		Row().ChoiceWithData("Tech", "tech").ChoiceWithData("Sports", "sports").
+//		Row().ChoiceWithData("Music", "music").ChoiceWithData("Travel", "travel").Build()
+//	q.AddMultipleAnswerQuestion("interests", "Select your interests:", interests, nil)
 func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choices [][]button.Button, validateFunc func(answer string) error) *Questionaire {
 	question := &Question{
 		Key:             key,
@@ -356,9 +434,28 @@ func (q *Questionaire) AddMultipleAnswerQuestion(key string, text string, choice
 	return q
 }
 
-/*
-AddQuestion adds a question that expects a single answer (text or radio style) to the questionnaire.
-*/
+// AddQuestion adds a text input or single-choice (radio) question to the questionnaire.
+//
+// Parameters:
+//   - key: Unique identifier for this question (used in the final answers map)
+//   - text: The question text shown to the user
+//   - choices: Button layout for radio questions (nil for text input)
+//   - validateFunc: Optional validation function for user input
+//
+// Question type is determined automatically:
+//   - If choices is nil: Creates a text input question
+//   - If choices is provided: Creates a radio button question (single selection)
+//
+// Examples:
+//
+//	// Text input question
+//	q.AddQuestion("name", "What's your name?", nil, validateNonEmpty)
+//
+//	// Radio button question
+//	ageChoices := button.NewBuilder().
+//		SingleChoiceWithData("Under 18", "age_under_18").
+//		SingleChoiceWithData("18-30", "age_18_30").Build()
+//	q.AddQuestion("age_group", "Select your age group:", ageChoices, nil)
 func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.Button, validateFunc func(answer string) error) *Questionaire {
 	question := &Question{
 		Key:             key,
@@ -366,7 +463,6 @@ func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.B
 		Choices:         choices,
 		ChoicesSelected: make([]string, 0),
 		validator:       validateFunc,
-		// isTextAnswer:    true,
 	}
 
 	if question.Choices == nil {
@@ -383,22 +479,39 @@ func (q *Questionaire) AddQuestion(key string, text string, choices [][]button.B
 	return q
 }
 
-/*
-SetOnDoneHandler sets the handler to be called when all questions have been answered.
-*/
+// SetOnDoneHandler sets the completion handler called when all questions have been answered.
+//
+// The handler receives:
+//   - ctx: Context (merged with questionnaire context if set)
+//   - b: Bot instance
+//   - chatID: Chat ID where questionnaire is running
+//   - answers: Map of question keys to user answers
+//
+// Example:
+//
+//	q.SetOnDoneHandler(func(ctx context.Context, b *bot.Bot, chatID any, answers map[string]interface{}) error {
+//		fmt.Printf("Survey completed: %+v\n", answers)
+//		return b.SendMessage(ctx, &bot.SendMessageParams{
+//			ChatID: chatID,
+//			Text:   "Thank you for completing the survey!",
+//		})
+//	})
 func (q *Questionaire) SetOnDoneHandler(handler onDoneHandlerFunc) *Questionaire {
 	q.onDoneHandler = handler
 	return q
 }
 
+// SetOnCancelHandler sets the cancellation handler called when the user cancels the questionnaire.
+// The handler typically sends a cancellation message to the user.
+// Questionnaire cleanup (message deletion) is handled automatically.
 func (q *Questionaire) SetOnCancelHandler(handler func()) *Questionaire {
 	q.onCancelHandler = handler
 	return q
 }
 
-/*
-Done is called when all questions have been answered. It marshals the answers to JSON and calls the onDoneHandler.
-*/
+// Done is called internally when all questions have been answered.
+// It marshals the answers to JSON and calls the onDoneHandler.
+// This method is typically not called directly by user code.
 func (q *Questionaire) Done(ctx context.Context, b *bot.Bot, update *models.Update) {
 
 	if q.ctx != nil {
@@ -443,9 +556,30 @@ const (
 	QUESTION_FORMAT = "✒️[%d/%d] %s"
 )
 
-/*
-Show starts the questionnaire, sending the current question to the user and registering with the manager if available.
-*/
+// Show starts the questionnaire by displaying the first (or current) question to the user.
+//
+// This method:
+//   - Registers the questionnaire with the manager (if available) for text message handling
+//   - Sends the current question with appropriate keyboard layout
+//   - Sets up callback handlers for button interactions
+//   - Handles error display if validation failed on previous attempts
+//
+// Parameters:
+//   - ctx: Context for the operation
+//   - b: Bot instance for sending messages
+//   - chatID: Telegram chat ID where to display the question
+//
+// The method automatically determines the question type and creates the appropriate interface:
+//   - Text questions: Simple message requesting text input
+//   - Radio questions: Message with inline keyboard buttons
+//   - Checkbox questions: Message with selectable buttons and "Done" option
+//
+// Example:
+//
+//	q := questionaire.NewBuilder(chatID, manager).
+//		AddQuestion("name", "What's your name?", nil, nil).
+//		SetOnDoneHandler(handleResults)
+//	q.Show(ctx, bot, chatID)
 func (q *Questionaire) Show(ctx context.Context, b *bot.Bot, chatID any) {
 	curQuestion := q.questions[q.currentQuestionIndex]
 	fmt.Println("[question] -> ", q.callbackID, "->", curQuestion)
@@ -689,11 +823,29 @@ func (q *Questionaire) Answer(ctx context.Context, answer string, b *bot.Bot, ch
 	return q.currentQuestionIndex >= len(q.questions)
 }
 
-/*
-GetResultByte marshals the answers of the questionnaire to JSON bytes.
-*/
+// GetResultByte marshals the questionnaire answers to JSON bytes.
+//
+// This utility function serializes the complete answers map (including InitialData)
+// to JSON format, making it suitable for logging, storage, or API transmission.
+//
+// Returns:
+//   - []byte: JSON representation of the answers map
+//   - error: JSON marshaling error, if any
+//
+// The JSON structure matches the answers map returned by GetAnswers():
+//   - Text/Radio answers: {"key": "value"}
+//   - Checkbox answers: {"key": ["option1", "option2"]}
+//   - Initial data: {"key": "value"}
+//
+// Example usage:
+//
+//	jsonData, err := questionaire.GetResultByte(q)
+//	if err != nil {
+//		log.Printf("Failed to serialize answers: %v", err)
+//		return
+//	}
+//	log.Printf("Survey results: %s", string(jsonData))
 func GetResultByte(q *Questionaire) ([]byte, error) {
-
 	data, err := json.Marshal(q.GetAnswers())
 	return data, err
 }

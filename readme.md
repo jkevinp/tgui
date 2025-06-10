@@ -13,6 +13,7 @@ UI controls for telegram bot [go-telegram/bot](https://github.com/go-telegram/bo
 - slider
 - progress
 - dialog
+- questionnaire
 - timepicker (todo)
 
 Feel to free to contribute and issues!

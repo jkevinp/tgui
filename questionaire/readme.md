@@ -12,6 +12,20 @@ To run the example locally:
 3. Run: `go run questionaire_example.go`
 4. Send `/survey` to the bot to test the questionnaire functionality
 
+### Enhanced Example Features
+
+The included example (`questionaire_example.go`) showcases various ButtonGrid patterns:
+
+- **Text Input**: Name and experience questions with validation
+- **Radio Buttons**: Age group selection with single column layout
+- **2×2 Grid**: Interest selection with organized checkbox layout
+- **Quick Choices**: Yes/No developer question using `QuickChoices`
+- **Paired Layout**: Programming language selection using `QuickPairedChoices`
+- **Custom Rating**: Star rating system with custom emoji layout
+- **Smart Results**: Beautifully formatted result summary with all answers
+
+The example demonstrates 7 different question types and ButtonGrid patterns, making it a comprehensive reference for real-world usage.
+
 ## Edit Functionality
 
 The questionnaire includes a powerful edit feature that allows users to go back and modify their previous answers:
@@ -36,12 +50,28 @@ The questionnaire includes a powerful edit feature that allows users to go back 
 
 ## Using ButtonGrid for Choices
 
-The questionnaire now supports the powerful `ButtonGrid` builder pattern for creating clean, organized choice layouts:
+The questionnaire supports the powerful `ButtonGrid` builder pattern for creating clean, organized choice layouts. This is the **recommended way** to create choices as it provides better maintainability and flexibility than manual button creation.
+
+### ButtonGrid Builder Methods
+
+#### Basic Methods:
+- **`NewBuilder()`**: Creates a new ButtonGrid builder
+- **`Row()`**: Starts a new row in the grid
+- **`Add(button.Button)`**: Adds a button to the current row
+- **`Build()`**: Returns the final `[][]button.Button` for use in questions
+
+#### Convenience Methods:
+- **`Choice(text)`**: Adds a button with auto-generated callback data
+- **`ChoiceWithData(text, callbackData)`**: Adds a button with custom callback data
+- **`SingleChoice(text)`**: Creates a new row with one choice (perfect for radio buttons)
+- **`SingleChoiceWithData(text, data)`**: Creates a new row with custom callback data
 
 ### Basic ButtonGrid Usage
 
 ```go
-// Simple single choices (radio buttons)
+import "github.com/jkevinp/tgui/button"
+
+// Simple single choices (radio buttons) - each on its own row
 ageChoices := button.NewBuilder().
     SingleChoiceWithData("Under 18", "age_under_18").
     SingleChoiceWithData("18-30", "age_18_30").
@@ -59,7 +89,7 @@ topicChoices := button.NewBuilder().
     ChoiceWithData("Travel", "topic_travel").
     Build()
 
-// Custom layouts like rating scales
+// 3-column rating scale
 ratingChoices := button.NewBuilder().
     Row().
     ChoiceWithData("⭐", "1").
@@ -69,20 +99,179 @@ ratingChoices := button.NewBuilder().
     ChoiceWithData("⭐⭐⭐⭐", "4").
     ChoiceWithData("⭐⭐⭐⭐⭐", "5").
     Build()
+
+// Auto-generated callback data (text becomes callback)
+simpleChoices := button.NewBuilder().
+    Row().
+    Choice("Option A").    // callback: "option_a"
+    Choice("Option B").    // callback: "option_b"
+    Build()
 ```
 
 ### Quick Helper Functions
 
+For common patterns, use these convenient helper functions:
+
 ```go
-// Simple Yes/No choices
+// Simple Yes/No choices (single column)
 yesNoChoices := button.QuickChoices("Yes", "No")
 
-// Paired layout (2 per row)
-languageChoices := button.QuickPairedChoices("Go", "Python", "JavaScript", "Java")
+// Paired layout (2 per row) - perfect for even number of options
+languageChoices := button.QuickPairedChoices(
+    "Go", "Python", "JavaScript", "Java", "C++", "Rust")
 
-// Custom callback data
-customChoices := button.QuickChoicesWithData("Display Text", "callback_data", "Another", "another_data")
+// Custom callback data with explicit pairs
+customChoices := button.QuickChoicesWithData(
+    "Display Text", "callback_data",
+    "Another Option", "another_callback",
+    "Third Option", "third_option")
 ```
+
+### Advanced Layout Examples
+
+```go
+// Mixed row sizes for complex layouts
+complexChoices := button.NewBuilder().
+    Row().
+    ChoiceWithData("Priority 1", "p1").
+    Row().
+    ChoiceWithData("Normal", "normal").
+    ChoiceWithData("Low", "low").
+    Row().
+    ChoiceWithData("Not Important", "ni").
+    Build()
+
+// Emoji-based choices with custom layout
+feedbackChoices := button.NewBuilder().
+    Row().
+    ChoiceWithData("😍 Love it", "love").
+    ChoiceWithData("😊 Like it", "like").
+    Row().
+    ChoiceWithData("😐 Neutral", "neutral").
+    Row().
+    ChoiceWithData("😞 Dislike", "dislike").
+    ChoiceWithData("😡 Hate it", "hate").
+    Build()
+```
+
+### Complete Example Usage
+
+```go
+// Create questionnaire with ButtonGrid choices
+q := questionaire.NewBuilder(chatID, manager).
+    SetOnDoneHandler(handleResults).
+    SetOnCancelHandler(handleCancel)
+
+// Text question (no choices needed)
+q.AddQuestion("name", "What's your name?", nil, validateNonEmpty)
+
+// Radio question with ButtonGrid
+ageChoices := button.NewBuilder().
+    SingleChoiceWithData("Under 18", "age_under_18").
+    SingleChoiceWithData("18-30", "age_18_30").
+    SingleChoiceWithData("31-45", "age_31_45").
+    SingleChoiceWithData("Over 45", "age_over_45").
+    Build()
+q.AddQuestion("age_group", "Which age group do you belong to?", ageChoices, nil)
+
+// Checkbox question with 2x2 grid
+interestChoices := button.NewBuilder().
+    Row().
+    ChoiceWithData("Technology", "tech").
+    ChoiceWithData("Sports", "sports").
+    Row().
+    ChoiceWithData("Music", "music").
+    ChoiceWithData("Travel", "travel").
+    Build()
+q.AddMultipleAnswerQuestion("interests",
+    "Which topics interest you? (Select multiple, then click Done)",
+    interestChoices, nil)
+
+// Simple Yes/No with QuickChoices
+developerChoices := button.QuickChoices("Yes", "No")
+q.AddQuestion("is_developer", "Are you a software developer?", developerChoices, nil)
+
+// Start the questionnaire
+q.Show(ctx, b, chatID)
+```
+
+### ButtonGrid Benefits & Best Practices
+
+#### Why Use ButtonGrid?
+
+1. **Cleaner Code**: Builder pattern is more readable than manual array creation
+2. **Flexible Layouts**: Easily create 1×n, 2×2, 3×2, or custom arrangements
+3. **Less Boilerplate**: Quick helpers eliminate repetitive code
+4. **Maintainable**: Easy to modify layouts without restructuring arrays
+5. **Type Safety**: Builder pattern prevents malformed button arrays
+6. **Consistent**: Standardized approach across your application
+
+#### Best Practices:
+
+**For Radio Questions (Single Selection):**
+```go
+// ✅ Good: Use SingleChoiceWithData for clear single-column layout
+choices := button.NewBuilder().
+    SingleChoiceWithData("Yes", "yes").
+    SingleChoiceWithData("No", "no").
+    SingleChoiceWithData("Maybe", "maybe").
+    Build()
+
+// ❌ Avoid: Manual creation for simple cases
+choices := [][]button.Button{
+    {button.Button{Text: "Yes", CallbackData: "yes"}},
+    {button.Button{Text: "No", CallbackData: "no"}},
+}
+```
+
+**For Checkbox Questions (Multiple Selection):**
+```go
+// ✅ Good: Use grid layout for better visual organization
+choices := button.NewBuilder().
+    Row().
+    ChoiceWithData("Tech", "tech").
+    ChoiceWithData("Sports", "sports").
+    Row().
+    ChoiceWithData("Music", "music").
+    ChoiceWithData("Travel", "travel").
+    Build()
+
+// ✅ Also good: Use QuickPairedChoices for even numbers
+choices := button.QuickPairedChoices("Tech", "Sports", "Music", "Travel")
+```
+
+**For Rating/Scale Questions:**
+```go
+// ✅ Good: Custom layout for visual appeal
+ratingChoices := button.NewBuilder().
+    Row().
+    ChoiceWithData("1⭐", "1").
+    ChoiceWithData("2⭐", "2").
+    ChoiceWithData("3⭐", "3").
+    Row().
+    ChoiceWithData("4⭐", "4").
+    ChoiceWithData("5⭐", "5").
+    Build()
+```
+
+**For Simple Yes/No Questions:**
+```go
+// ✅ Best: Use QuickChoices helper
+choices := button.QuickChoices("Yes", "No")
+
+// ✅ Also good: Explicit if you need custom callback data
+choices := button.NewBuilder().
+    SingleChoiceWithData("Accept", "accept").
+    SingleChoiceWithData("Decline", "decline").
+    Build()
+```
+
+#### Layout Guidelines:
+
+- **1 column**: Perfect for radio buttons with many options
+- **2 columns**: Great for checkboxes, pairs of options
+- **3+ columns**: Use sparingly, only for compact items (emojis, numbers)
+- **Mixed layouts**: Combine different row sizes for emphasis
 
 ## Initialization and Configuration
 
@@ -132,25 +321,41 @@ You can add different types of questions to the `Questionaire`.
     *   `choices` are mandatory for this type.
     *   The `validateFunc` here would typically validate individual selections if needed, though often validation for checkboxes is about the overall set of choices (handled after completion).
 
-**Example of `choices` for `button.Button`:**
+**Creating Choices with ButtonGrid (Recommended):**
 
 ```go
 import "github.com/jkevinp/tgui/button"
 
-// For a radio or checkbox question
+// For radio questions - clean single choices
+radioChoices := button.NewBuilder().
+    SingleChoiceWithData("Option A", "opt_a").
+    SingleChoiceWithData("Option B", "opt_b").
+    Build()
+
+// For checkbox questions - flexible grid layout
+checkboxChoices := button.NewBuilder().
+    Row().
+    ChoiceWithData("Choice X", "choice_x").
+    ChoiceWithData("Choice Y", "choice_y").
+    Row().
+    ChoiceWithData("Choice Z", "choice_z").
+    Build()
+
+// Quick helpers for common patterns
+yesNoChoices := button.QuickChoices("Yes", "No")
+pairedChoices := button.QuickPairedChoices("Option 1", "Option 2", "Option 3", "Option 4")
+```
+
+**Legacy Manual Creation (Not Recommended):**
+
+```go
+// Old way - manual button creation (harder to maintain)
 radioChoices := [][]button.Button{
     {button.Button{Text: "Option A", CallbackData: "opt_a"}}, // Row 1
     {button.Button{Text: "Option B", CallbackData: "opt_b"}}, // Row 2
 }
-
-checkboxChoices := [][]button.Button{
-    {
-        button.Button{Text: "Choice X", CallbackData: "choice_x"},
-        button.Button{Text: "Choice Y", CallbackData: "choice_y"},
-    }, // Row 1
-    {button.Button{Text: "Choice Z", CallbackData: "choice_z"}}, // Row 2
-}
 ```
+
 **Note:** The `CallbackData` for buttons should be unique for each choice within a question.
 
 **Example of `validateFunc`:**
