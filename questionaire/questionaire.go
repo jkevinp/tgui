@@ -172,29 +172,29 @@ func (q *Questionaire) sendAnswerSummary(ctx context.Context, b *bot.Bot, questi
 		editKB = inline.New(b, inline.WithPrefix(
 			fmt.Sprintf("qs_%s_answer_%d", q.callbackID, questionIndex),
 		)).Button(helper.EscapeTelegramReserved(EditButtonText), []byte(fmt.Sprintf("%d", questionIndex)), q.onBack)
-	}
 
-	if question.QuestionFormat == QuestionFormatText && question.MsgID != 0 {
-		// For text questions, edit the existing message to add edit button (if enabled)
-		answerText := fmt.Sprintf("✅ *%s*\n%s",
-			helper.EscapeTelegramReserved(question.Text),
-			helper.EscapeTelegramReserved(displayAnswer))
+		if question.QuestionFormat == QuestionFormatText && question.MsgID != 0 {
+			// For text questions, edit the existing message to add edit button (if enabled)
+			answerText := fmt.Sprintf("✅ *%s*\n%s",
+				helper.EscapeTelegramReserved(question.Text),
+				helper.EscapeTelegramReserved(displayAnswer))
 
-		_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
-			ChatID:      q.chatID,
-			MessageID:   question.MsgID,
-			Text:        answerText,
-			ParseMode:   models.ParseModeMarkdown,
-			ReplyMarkup: editKB,
-		})
+			_, err := b.EditMessageText(ctx, &bot.EditMessageTextParams{
+				ChatID:      q.chatID,
+				MessageID:   question.MsgID,
+				Text:        answerText,
+				ParseMode:   models.ParseModeMarkdown,
+				ReplyMarkup: editKB,
+			})
 
-		if err != nil {
-			// If edit fails, fall back to sending new message
+			if err != nil {
+				// If edit fails, fall back to sending new message
+				q.sendNewAnswerSummary(ctx, b, question, displayAnswer, editKB)
+			}
+		} else {
+			// For radio/checkbox questions, send a new summary message
 			q.sendNewAnswerSummary(ctx, b, question, displayAnswer, editKB)
 		}
-	} else {
-		// For radio/checkbox questions, send a new summary message
-		q.sendNewAnswerSummary(ctx, b, question, displayAnswer, editKB)
 	}
 }
 
