@@ -408,6 +408,7 @@ func (d *DataTable) nagivateCallback(ctx context.Context, b *bot.Bot, mes models
 			questionaire.NewBuilder(d.chatID, d.questionaireManager).
 				AddQuestion(filterKey, "Enter value for "+filterKey, nil, nil).
 				SetOnDoneHandler(fun).
+				SetAllowEditAnswers(false).
 				Show(ctx, b, d.chatID.(int64))
 
 			return

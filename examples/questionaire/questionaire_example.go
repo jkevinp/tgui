@@ -108,7 +108,9 @@ func startSurveyHandler(ctx context.Context, b *bot.Bot, update *models.Update) 
 				ChatID: chatID,
 				Text:   "Survey cancelled.",
 			})
-		})
+		}).
+		// SetAllowEditAnswers(false) // Uncomment to disable editing of answered questions
+		SetAllowEditAnswers(true) // Default: true (users can edit previous answers)
 
 	// Question 1: Text input
 	q.AddQuestion("name", "What is your name?", nil, validateShort)

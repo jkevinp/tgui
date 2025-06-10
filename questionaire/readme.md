@@ -273,6 +273,34 @@ choices := button.NewBuilder().
 - **3+ columns**: Use sparingly, only for compact items (emojis, numbers)
 - **Mixed layouts**: Combine different row sizes for emphasis
 
+## Configuration Options
+
+### Edit Functionality Control
+
+You can control whether users can edit their previous answers using `SetAllowEditAnswers()`:
+
+```go
+// Default behavior - users can edit previous answers
+q := questionaire.NewBuilder(chatID, manager).
+    SetAllowEditAnswers(true)
+
+// Disable editing - no edit buttons will be shown
+q := questionaire.NewBuilder(chatID, manager).
+    SetAllowEditAnswers(false)
+```
+
+When `SetAllowEditAnswers(false)` is used:
+- ✅ Answered questions will show as completed (with checkmark)
+- ❌ No "◀️ Edit" buttons will be displayed
+- ❌ Users cannot go back to modify previous answers
+- ✅ Questionnaire flow becomes linear and faster
+
+This is useful for:
+- **Surveys where answers shouldn't be changed** (e.g., data collection, polls)
+- **Linear workflows** where going back would break the logic
+- **Faster completion** by removing the temptation to second-guess answers
+- **Simplified UI** with fewer buttons and options
+
 ## Initialization and Configuration
 
 A `Questionaire` is created using `NewBuilder`. You can then chain setter methods to configure it.

@@ -89,6 +89,8 @@ type Questionaire struct {
 	InitialData map[string]interface{}
 	// manager is the Manager instance handling this questionnaire (optional)
 	manager *Manager
+	// allowEditAnswers controls whether answered questions can be edited (default: true)
+	allowEditAnswers bool
 }
 
 // GetAnswers returns a map of question keys to their answers or selected choices.
@@ -148,9 +150,10 @@ func (q *Question) SetMsgID(msgID int) {
 	q.MsgID = msgID
 }
 
-// sendAnswerSummary adds an edit button to the completed question.
+// sendAnswerSummary adds an edit button to the completed question (if editing is enabled).
 // For text questions: edits the existing message to add edit button
 // For radio/checkbox questions: sends a new summary message (since original was deleted)
+// If allowEditAnswers is false, no edit button is added.
 func (q *Questionaire) sendAnswerSummary(ctx context.Context, b *bot.Bot, questionIndex int) {
 	if questionIndex < 0 || questionIndex >= len(q.questions) {
 		return
@@ -162,12 +165,17 @@ func (q *Questionaire) sendAnswerSummary(ctx context.Context, b *bot.Bot, questi
 	}
 
 	displayAnswer := question.GetDisplayAnswer()
-	editKB := inline.New(b, inline.WithPrefix(
-		fmt.Sprintf("qs_%s_answer_%d", q.callbackID, questionIndex),
-	)).Button(helper.EscapeTelegramReserved(EditButtonText), []byte(fmt.Sprintf("%d", questionIndex)), q.onBack)
+
+	// Check if editing is allowed
+	var editKB *inline.Keyboard
+	if q.allowEditAnswers {
+		editKB = inline.New(b, inline.WithPrefix(
+			fmt.Sprintf("qs_%s_answer_%d", q.callbackID, questionIndex),
+		)).Button(helper.EscapeTelegramReserved(EditButtonText), []byte(fmt.Sprintf("%d", questionIndex)), q.onBack)
+	}
 
 	if question.QuestionFormat == QuestionFormatText && question.MsgID != 0 {
-		// For text questions, edit the existing message to add edit button
+		// For text questions, edit the existing message to add edit button (if enabled)
 		answerText := fmt.Sprintf("✅ *%s*\n%s",
 			helper.EscapeTelegramReserved(question.Text),
 			helper.EscapeTelegramReserved(displayAnswer))
@@ -191,20 +199,27 @@ func (q *Questionaire) sendAnswerSummary(ctx context.Context, b *bot.Bot, questi
 }
 
 /*
-sendNewAnswerSummary sends a new message with answer summary and edit button.
+sendNewAnswerSummary sends a new message with answer summary and edit button (if provided).
 Used for radio/checkbox questions or as fallback when editing fails.
+editKB can be nil when editing is disabled.
 */
 func (q *Questionaire) sendNewAnswerSummary(ctx context.Context, b *bot.Bot, question *Question, displayAnswer string, editKB *inline.Keyboard) {
 	answerText := fmt.Sprintf("✅ *%s*\n%s",
 		helper.EscapeTelegramReserved(question.Text),
 		helper.EscapeTelegramReserved(displayAnswer))
 
-	answerMsg, err := b.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:      q.chatID,
-		Text:        answerText,
-		ParseMode:   models.ParseModeMarkdown,
-		ReplyMarkup: editKB,
-	})
+	params := &bot.SendMessageParams{
+		ChatID:    q.chatID,
+		Text:      answerText,
+		ParseMode: models.ParseModeMarkdown,
+	}
+
+	// Only add reply markup if edit keyboard is provided (editing enabled)
+	if editKB != nil {
+		params.ReplyMarkup = editKB
+	}
+
+	answerMsg, err := b.SendMessage(ctx, params)
 
 	if err != nil {
 		// Could optionally log error here if logging system is available
@@ -379,6 +394,7 @@ func NewBuilder(chatID any, manager *Manager) *Questionaire {
 		onDoneHandler:        nil,
 		msgIds:               make([]int, 0),
 		manager:              manager,
+		allowEditAnswers:     true, // Default to true for backward compatibility
 	}
 }
 
@@ -506,6 +522,24 @@ func (q *Questionaire) SetOnDoneHandler(handler onDoneHandlerFunc) *Questionaire
 // Questionnaire cleanup (message deletion) is handled automatically.
 func (q *Questionaire) SetOnCancelHandler(handler func()) *Questionaire {
 	q.onCancelHandler = handler
+	return q
+}
+
+// SetAllowEditAnswers controls whether answered questions can be edited by the user.
+// When set to false, answered questions will not show edit buttons and users cannot go back to modify their responses.
+// When set to true (default), users can click edit buttons to modify previous answers.
+//
+// Parameters:
+//   - allow: true to enable editing (default), false to disable editing of answered questions
+//
+// Example:
+//
+//	// Create a questionnaire without edit functionality
+//	q := questionaire.NewBuilder(chatID, manager).
+//		SetAllowEditAnswers(false).
+//		AddQuestion("name", "What's your name?", nil, nil)
+func (q *Questionaire) SetAllowEditAnswers(allow bool) *Questionaire {
+	q.allowEditAnswers = allow
 	return q
 }
 
