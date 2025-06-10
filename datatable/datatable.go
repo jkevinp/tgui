@@ -2,12 +2,14 @@ package datatable
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
 	"strings"
 
 	"github.com/jkevinp/tgui/button"
+	"github.com/jkevinp/tgui/helper"
 	"github.com/jkevinp/tgui/keyboard/inline"
 	"github.com/jkevinp/tgui/questionaire"
 
@@ -56,6 +58,134 @@ type DataTable struct {
 
 	b          *bot.Bot
 	pagesCount int64
+}
+
+// DataTableBuilder provides a fluent interface for building DataTable instances
+type DataTableBuilder struct {
+	bot                 *bot.Bot
+	itemsPerPage        int
+	dataHandler         dataHandlerFunc
+	questionaireManager *questionaire.Manager
+	filterKeys          []string
+	onError             OnErrorHandler
+	onCancelHandler     func()
+}
+
+// NewBuilder creates a new DataTableBuilder with the required bot instance.
+// It sets sensible defaults for optional parameters.
+func NewBuilder(b *bot.Bot) *DataTableBuilder {
+	if b == nil {
+		log.Println("[datatable] [ERROR] NewBuilder: bot instance cannot be nil")
+		return nil
+	}
+	return &DataTableBuilder{
+		bot:          b,
+		itemsPerPage: 10, // Default items per page
+		onError:      defaultOnError,
+	}
+}
+
+// WithItemsPerPage sets the number of items to display per page.
+// If count is not positive, it will be ignored.
+func (dtb *DataTableBuilder) WithItemsPerPage(count int) *DataTableBuilder {
+	if count > 0 {
+		dtb.itemsPerPage = count
+	}
+	return dtb
+}
+
+// WithDataHandler sets the data handler function for fetching data.
+// This is a required component for the DataTable to function.
+func (dtb *DataTableBuilder) WithDataHandler(handler dataHandlerFunc) *DataTableBuilder {
+	dtb.dataHandler = handler
+	return dtb
+}
+
+// WithFiltering enables filtering capabilities by setting the questionaire manager and filter keys.
+// If manager is nil or keys is empty, filtering might be disabled or limited.
+func (dtb *DataTableBuilder) WithFiltering(manager *questionaire.Manager, keys []string) *DataTableBuilder {
+	dtb.questionaireManager = manager
+	dtb.filterKeys = keys
+	return dtb
+}
+
+// WithOnErrorHandler sets a custom error handler.
+// If handler is nil, it will be ignored and the default will be used.
+func (dtb *DataTableBuilder) WithOnErrorHandler(handler OnErrorHandler) *DataTableBuilder {
+	if handler != nil {
+		dtb.onError = handler
+	}
+	return dtb
+}
+
+// WithOnCancelHandler sets a custom cancel handler.
+func (dtb *DataTableBuilder) WithOnCancelHandler(handler func()) *DataTableBuilder {
+	dtb.onCancelHandler = handler
+	return dtb
+}
+
+// Build validates the configuration and constructs the DataTable instance.
+// It returns an error if any required fields are missing or invalid.
+func (dtb *DataTableBuilder) Build() (*DataTable, error) {
+	// Validation
+	if dtb.bot == nil {
+		return nil, errors.New("datatable: Bot instance is required")
+	}
+	if dtb.dataHandler == nil {
+		return nil, errors.New("datatable: DataHandler is required")
+	}
+	if dtb.itemsPerPage <= 0 {
+		return nil, errors.New("datatable: ItemsPerPage must be positive")
+	}
+
+	// Construction - using the same logic as the original New() function
+	prefix := "dt" + bot.RandomString(14)
+	fmt.Println("new datatable", prefix)
+
+	dt := &DataTable{
+		b:                   dtb.bot,
+		prefix:              prefix,
+		onError:             dtb.onError,
+		dataHandler:         dtb.dataHandler,
+		questionaireManager: dtb.questionaireManager,
+		filterKeys:          dtb.filterKeys,
+		onCancelHandler:     dtb.onCancelHandler,
+		currentFilter:       make(map[string]interface{}),
+		// Initialize control buttons
+		CtrlBack:   button.Button{Text: BACK, CallbackData: "back"},
+		CtrlNext:   button.Button{Text: NEXT, CallbackData: "next"},
+		CtrlClose:  button.Button{Text: CLOSE, CallbackData: "close"},
+		CtrlFilter: button.Button{Text: FILTER, CallbackData: "filter"},
+	}
+
+	dt.currentFilter["pageSize"] = int64(dtb.itemsPerPage)
+	dt.currentFilter["pageNum"] = int64(1)
+
+	// Build filter buttons if filterKeys are provided
+	if len(dt.filterKeys) > 0 {
+		filterMenu := button.NewBuilder()
+		for _, filterKey := range dt.filterKeys {
+			fmt.Println("[datatable] adding filter:", filterKey)
+			filterMenu.Row().Add(button.Button{
+				Text:         filterKey,
+				CallbackData: dt.prefix + "filter_" + filterKey,
+				OnClick:      dt.nagivateCallback,
+			})
+		}
+		filterMenu.Row().Add(button.New(
+			CANCEL,
+			dt.prefix+"filter_cancel",
+			dt.nagivateCallback,
+		))
+		dt.filterButtons = filterMenu.Build()
+	}
+
+	// Ensure onError is set
+	if dt.onError == nil {
+		dt.onError = defaultOnError
+	}
+
+	return dt, nil
 }
 
 func (d *DataTable) calcStartPage() int64 {
@@ -112,6 +242,8 @@ func (d *DataTable) SetOnCancelHandler(handler func()) *DataTable {
 
 /*
 New creates and initializes a new DataTable with the given bot, items per page, data handler, questionaire manager, and filter keys.
+
+Deprecated: Use NewBuilder() instead for a more flexible and readable API.
 */
 func New(
 	b *bot.Bot,
@@ -412,7 +544,7 @@ func (d *DataTable) rebuildControls(chatID any) *bot.SendMessageParams {
 
 	params := &bot.SendMessageParams{
 		ChatID:      chatID,
-		Text:        d.text,
+		Text:        helper.EscapeTelegramReserved(d.text),
 		ParseMode:   models.ParseModeMarkdown,
 		ReplyMarkup: navigateNode,
 	}
