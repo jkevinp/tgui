@@ -186,6 +186,41 @@ The Builder pattern provides clear error messages for common mistakes:
 - `"datatable: DataHandler is required"` - Build() called without setting data handler
 - `"datatable: ItemsPerPage must be positive"` - Invalid items per page value
 
+## Internal Architecture Improvements
+
+### Clean Callback Handling
+The DataTable now uses a modular callback system with:
+- **Constants**: All internal commands use package-level constants for consistency
+- **Dedicated Handlers**: Each action (next page, filter, etc.) has its own method
+- **Easy Maintenance**: Clear separation of concerns makes debugging easier
+
+### Callback Command Structure
+```go
+// Standard control commands
+cbCmdNext, cbCmdBack, cbCmdClose, cbCmdFilter
+
+// Parameterized commands with prefixes
+cbPfxSetPage + "3"           // Navigate to page 3
+cbPfxSelectFilterKey + "name" // Start filter questionnaire for "name"
+cbPfxRemoveFilter + "status"  // Remove "status" filter
+```
+
+### Handler Methods
+Each callback action now has its own dedicated method:
+- `handleNextPage()` - Navigate to next page
+- `handlePreviousPage()` - Navigate to previous page
+- `handleSetPage()` - Jump to specific page
+- `handleShowFilterMenu()` - Display filter selection
+- `handleStartFilterQuestionnaire()` - Begin filter input
+- `handleRemoveFilter()` - Remove active filter
+- `handleClose()` - Handle table closure
+
+### Benefits for Developers
+- **Easier Debugging**: Each action can be debugged independently
+- **Better Code Organization**: Callback logic is properly separated
+- **Consistent Command Handling**: All internal commands use constants
+- **Maintainable**: Adding new features is straightforward
+
 ## Backward Compatibility
 
 The old `New()` function is still available for backward compatibility but is marked as deprecated. It will be removed in a future version, so please migrate to the Builder pattern.
