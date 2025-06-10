@@ -15,6 +15,7 @@ type SubMenu struct {
 	MsgID           any
 	Prefix          string
 	OnCancelHandler func()
+	bot             *bot.Bot
 }
 
 type SubMenuItem struct {
@@ -65,6 +66,7 @@ func NewBuilder(b *bot.Bot, text string) *SubMenu {
 		Text:   text,
 		Kb:     inline.New(b, inline.WithPrefix(prefix)),
 		Prefix: prefix,
+		bot:    b,
 	}
 }
 
@@ -106,8 +108,8 @@ func (m *SubMenu) onCancel(ctx context.Context, b *bot.Bot, mes models.MaybeInac
 
 }
 
-func (m *SubMenu) Show(ctx context.Context, b *bot.Bot, chatID any) (*models.Message, error) {
-	msg, err := b.SendMessage(ctx, &bot.SendMessageParams{
+func (m *SubMenu) Show(ctx context.Context, chatID any) (*models.Message, error) {
+	msg, err := m.bot.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:      chatID,
 		Text:        m.Text,
 		ReplyMarkup: m.Kb,
